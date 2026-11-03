@@ -6,28 +6,23 @@ POST /api/login     - check email + password, return an auth token
 POST /api/logout    - invalidate the current user's tokens
 GET  /api/me        - details of the logged-in user
 """
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify
 from flask_security import current_user, hash_password, verify_password
 
 from extensions import db, security
 from models import ROLE_USER
 from utils.decorators import json_error, token_required
-from utils.validators import clean_email, validate_registration
+from utils.validators import clean_email, json_body as _json_body
+from utils.validators import validate_registration, validation_error
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api")
-
-
-def _json_body():
-    """Request body as a dict ({} if it is missing or not a JSON object)."""
-    data = request.get_json(silent=True)
-    return data if isinstance(data, dict) else {}
 
 
 @auth_bp.route("/register", methods=["POST"])
 def register():
     data, errors = validate_registration(_json_body())
     if errors:
-        return jsonify({"error": "Validation failed.", "fields": errors}), 400
+        return validation_error(errors)
 
     datastore = security.datastore
     if datastore.find_user(email=data["email"]):

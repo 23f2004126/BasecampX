@@ -35,7 +35,8 @@ def iso(value):
 ROLE_ADMIN, ROLE_STAFF, ROLE_USER = "admin", "staff", "user"
 
 TREK_DIFFICULTIES = ("Easy", "Moderate", "Hard")
-TREK_STATUSES = ("Pending", "Approved", "Open", "Closed", "Completed")
+# Lifecycle: Pending -> Approved (admin) -> Open/Closed (staff) -> Ongoing -> Completed
+TREK_STATUSES = ("Pending", "Approved", "Open", "Closed", "Ongoing", "Completed")
 BOOKING_STATUSES = ("Booked", "Cancelled", "Completed")
 PAYMENT_STATUSES = ("Pending", "Paid", "Refunded")
 
@@ -196,12 +197,21 @@ class Trek(db.Model):
 
 class Booking(db.Model):
     __tablename__ = "booking"
-    # Deliberately NO unique constraint on (user_id, trek_id): a user who
-    # cancelled may book the same trek again. Duplicate *active* bookings
-    # are blocked in the booking route instead.
+    # Deliberately NO plain unique constraint on (user_id, trek_id): a user who
+    # cancelled may book the same trek again. Duplicate *active* bookings are
+    # blocked in the booking route, and this PARTIAL unique index is a safety
+    # net: it only covers rows with status 'Booked', so at most one active
+    # booking per user per trek can exist, even if two requests race.
     __table_args__ = (
         _in_list("status", BOOKING_STATUSES),
         _in_list("payment_status", PAYMENT_STATUSES),
+        db.Index(
+            "uq_one_active_booking",
+            "user_id",
+            "trek_id",
+            unique=True,
+            sqlite_where=db.text("status = 'Booked'"),
+        ),
     )
 
     id = db.Column(db.Integer, primary_key=True)

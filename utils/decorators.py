@@ -14,8 +14,8 @@ from flask_security import auth_required, current_user, roles_accepted
 
 
 def json_error(message, status):
-    """Standard JSON error body used across the whole API."""
-    return jsonify({"error": message}), status
+    """Standard JSON error body used across the whole API: {"message": "..."}."""
+    return jsonify({"message": message}), status
 
 
 def role_required(*roles):
