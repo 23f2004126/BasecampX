@@ -89,4 +89,6 @@ def register_api_error_handlers(app):
 
 if __name__ == "__main__":
     app = create_app()
-    app.run(debug=True)
+    # Port 5001, not Flask's default 5000: on macOS, AirPlay Receiver
+    # already uses 5000 and answers browser requests with 403 Forbidden.
+    app.run(debug=True, port=5001)

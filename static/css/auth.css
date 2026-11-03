@@ -1,0 +1,545 @@
+/* =========================================================================
+   Login & Register: background video, clouds, particles, glass card,
+   role selector, tilt, entrance animations.
+   ========================================================================= */
+
+.auth-page {
+  position: relative;
+  min-height: 100dvh;
+  isolation: isolate;
+}
+
+/* ---------------------------------------------------------------------------
+   AuthBackground
+   --------------------------------------------------------------------------- */
+.auth-bg {
+  --px: 0; /* mouse position -1..1, set from JS for parallax */
+  --py: 0;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--forest-deep);
+}
+
+/* Oversized by 28px on every side so the parallax shift never shows an edge */
+.auth-bg__parallax {
+  position: absolute;
+  inset: -28px;
+  transform: translate3d(calc(var(--px) * -14px), calc(var(--py) * -10px), 0);
+}
+
+/* Video plays slightly zoomed in (1.05) and "settles" back to 1.0 at the end */
+.auth-bg__settle {
+  position: absolute;
+  inset: 0;
+  transform: scale(1.05);
+}
+
+.auth-bg.is-finished .auth-bg__settle {
+  animation: settle 2.8s var(--ease-out) both;
+}
+
+@keyframes settle {
+  from { transform: scale(1.05); }
+  to   { transform: scale(1); }
+}
+
+.auth-bg__media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 50%;
+}
+
+/* The still frame sits on top of the video but stays invisible until the end */
+.auth-bg__poster {
+  opacity: 0;
+}
+
+.auth-bg.is-finished .auth-bg__poster {
+  opacity: 1;
+}
+
+/* Softening for the 848x480 source on big screens: a hint of blur + film grain
+   hides upscaling blockiness; a light mist gradient adds depth at the top. */
+.auth-bg__soften {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(231, 233, 219, 0.1) 0%, rgba(231, 233, 219, 0) 35%);
+}
+
+.auth-bg__soften::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.08;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@media (min-width: 1200px) {
+  .auth-bg__settle { filter: blur(0.5px) saturate(1.06); }
+  .auth-bg__soften::after { opacity: 0.12; }
+}
+
+/* Dark vignette on the right (where the card sits), faded in at the end */
+.auth-bg__vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.4s ease 0.15s;
+  background:
+    linear-gradient(270deg, rgba(16, 26, 21, 0.62) 0%, rgba(16, 26, 21, 0.36) 30%, rgba(16, 26, 21, 0) 60%),
+    radial-gradient(ellipse at 50% 120%, rgba(16, 26, 21, 0.35), transparent 60%);
+}
+
+.auth-bg.is-finished .auth-bg__vignette {
+  opacity: 1;
+}
+
+@media (max-width: 767.98px) {
+  .auth-bg__media { object-position: 28% 50%; } /* keep the cheering hikers in view */
+  .auth-bg__vignette {
+    background: linear-gradient(180deg, rgba(16, 26, 21, 0.12) 0%, rgba(16, 26, 21, 0.5) 100%);
+  }
+}
+
+/* ---- Drifting clouds (CSS only) ---- */
+.auth-bg__clouds {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 36vh;
+  pointer-events: none;
+  /* clouds move twice as much as the background -> depth */
+  transform: translate3d(calc(var(--px) * -28px), calc(var(--py) * -8px), 0);
+}
+
+.cloud {
+  position: absolute;
+  left: 0;
+  width: 220px;
+  height: 64px;
+  opacity: 0.5;
+  animation: drift 100s linear infinite;
+}
+
+.cloud::before,
+.cloud::after {
+  content: "";
+  position: absolute;
+  background: rgba(255, 255, 255, 0.92);
+  filter: blur(7px);
+}
+
+.cloud::before { /* flat base */
+  left: 0; right: 0; bottom: 0;
+  height: 30px;
+  border-radius: 999px;
+}
+
+.cloud::after { /* two puffs on top */
+  left: 24%;
+  bottom: 12px;
+  width: 80px;
+  height: 52px;
+  border-radius: 50%;
+  box-shadow: 64px 12px 0 -8px rgba(255, 255, 255, 0.92);
+}
+
+.cloud--1 { top: 4%;  scale: 0.9; animation-duration: 95s;  animation-delay: -20s; }
+.cloud--2 { top: 14%; scale: 1.3; animation-duration: 140s; animation-delay: -85s; opacity: 0.35; }
+.cloud--3 { top: 1%;  scale: 0.7; animation-duration: 78s;  animation-delay: -50s; opacity: 0.45; }
+.cloud--4 { top: 24%; scale: 1.1; animation-duration: 120s; animation-delay: -5s;  opacity: 0.3; }
+
+/* ---- Skip button ---- */
+.auth-bg__skip {
+  position: absolute;
+  left: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  background: rgba(22, 33, 27, 0.35);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  animation: fadeIn 0.5s ease 0.6s both;
+}
+
+.auth-bg__skip:hover {
+  background: rgba(22, 33, 27, 0.6);
+}
+
+/* ---------------------------------------------------------------------------
+   ParticleLayer canvas + confetti canvas
+   --------------------------------------------------------------------------- */
+.particle-layer {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.confetti-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2000;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Card stage: right side on desktop, full width on phones
+   --------------------------------------------------------------------------- */
+.auth-stage {
+  position: relative;
+  z-index: 2;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  pointer-events: none; /* the empty stage must not block the Skip button */
+}
+
+.auth-stage__slot {
+  --rise-from: 40px;
+  width: 100%;
+  max-width: 420px;
+  pointer-events: auto;
+}
+
+@media (min-width: 768px) {
+  .auth-stage {
+    justify-content: flex-end;
+    padding: 32px clamp(32px, 7vw, 120px);
+  }
+  .auth-stage__slot { --rise-from: 80px; }
+}
+
+/* Entrance: the wrapper slides in (transform only), the glass card itself
+   fades and un-blurs. They are split because opacity/filter on a PARENT
+   would stop the card's backdrop-filter from blurring the video behind it. */
+.card-enter {
+  animation: cardRise 0.8s var(--ease-out) both;
+}
+
+.card-enter .glass-card {
+  animation: cardFocus 0.8s var(--ease-out) both;
+}
+
+.auth-stage__slot.is-leaving {
+  animation: cardLeave 0.45s var(--ease-out) forwards;
+}
+
+@keyframes cardRise {
+  from { transform: translateX(var(--rise-from)); }
+  to   { transform: none; }
+}
+
+@keyframes cardFocus {
+  from { opacity: 0; filter: blur(12px); }
+  to   { opacity: 1; filter: none; }
+}
+
+@keyframes cardLeave {
+  to { transform: translateX(-70px); opacity: 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+}
+
+/* ---------------------------------------------------------------------------
+   TiltCard
+   --------------------------------------------------------------------------- */
+.tilt {
+  position: relative;
+}
+
+.tilt__inner {
+  position: relative;
+  border-radius: var(--radius-lg);
+  transition: transform 0.6s var(--ease-out);
+}
+
+.tilt__inner.is-active {
+  transition-duration: 0.15s;
+}
+
+.tilt__glare {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  background: radial-gradient(circle at var(--gx, 50%) var(--gy, 50%), rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 55%);
+}
+
+.tilt__inner.is-active .tilt__glare {
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   Glass card
+   --------------------------------------------------------------------------- */
+.glass-card {
+  position: relative;
+  padding: 28px 26px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: var(--shadow-lift), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  color: var(--forest);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-card { background: rgba(255, 255, 255, 0.93); }
+}
+
+@media (max-width: 400px) {
+  .glass-card { padding: 22px 18px 18px; }
+}
+
+.glass-card__title {
+  font-size: clamp(1.5rem, 1.25rem + 1vw, 1.85rem);
+  margin-bottom: 0.25rem;
+}
+
+/* Typed title: an invisible copy of the full text reserves the final size,
+   the live text is stacked on top, so the card never jumps while typing. */
+.type-title {
+  display: grid;
+}
+
+.type-title > span {
+  grid-area: 1 / 1;
+}
+
+.type-title__ghost {
+  visibility: hidden;
+}
+
+.type-caret {
+  display: inline-block;
+  width: 2px;
+  height: 0.95em;
+  margin-left: 3px;
+  vertical-align: -0.1em;
+  background: var(--summit);
+  animation: caretBlink 1s steps(1) infinite;
+}
+
+@keyframes caretBlink {
+  50% { opacity: 0; }
+}
+
+.glass-card__subtitle {
+  margin-bottom: 1.1rem;
+  color: var(--moss);
+}
+
+.glass-card__footer {
+  margin-top: 1.1rem;
+  text-align: center;
+  font-size: 0.95rem;
+}
+
+/* Form fields fade up one after another (--i = order) */
+.field-in {
+  animation: fadeUp 0.55s var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 90ms + 420ms);
+}
+
+.glass-card .form-control {
+  border-color: rgba(75, 94, 84, 0.25);
+  background-color: rgba(255, 255, 255, 0.8);
+  color: var(--forest);
+}
+
+.glass-card .form-floating > label {
+  color: var(--moss);
+}
+
+/* Bootstrap paints a solid box behind floated labels; keep it see-through */
+.glass-card .form-floating > label::after {
+  background-color: transparent !important;
+}
+
+.password-field .form-control,
+.password-field .form-control.is-invalid {
+  padding-right: 3rem;
+  background-image: none; /* the eye button lives where the warning icon would be */
+}
+
+.password-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 5;
+  width: 3rem;
+  height: calc(3.5rem + 2px);
+  border: 0;
+  border-radius: 0 var(--bs-border-radius) var(--bs-border-radius) 0;
+  background: none;
+  color: var(--moss);
+  font-size: 1.1rem;
+}
+
+.password-toggle:hover {
+  color: var(--forest);
+}
+
+.form-alert {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid rgba(176, 67, 42, 0.25);
+  border-radius: var(--radius-sm);
+  background: rgba(176, 67, 42, 0.1);
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
+/* Password strength */
+.strength {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.6rem;
+  margin: 0.4rem 0 1rem;
+  font-size: 0.8rem;
+  color: var(--moss);
+}
+
+.strength__track {
+  flex: 1 1 80px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(75, 94, 84, 0.15);
+}
+
+.strength__bar {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--clay);
+  transition: width 0.35s var(--ease-out), background-color 0.35s ease;
+}
+
+.strength--fair .strength__bar { background: var(--summit); }
+.strength--good .strength__bar { background: var(--sky); }
+.strength--strong .strength__bar { background: var(--forest); }
+
+.strength__label {
+  flex: 0 1 auto;
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------------------
+   RoleSelector
+   --------------------------------------------------------------------------- */
+.role-selector {
+  --role-gap: 8px;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--role-gap);
+}
+
+/* The single highlight that slides behind the selected tile */
+.role-selector__highlight {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  width: calc((100% - 2 * var(--role-gap)) / 3);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(38, 55, 46, 0.16), inset 0 0 0 2px var(--summit);
+  transition: transform 0.45s var(--ease-spring);
+  animation: fadeIn 0.4s ease 0.65s both;
+}
+
+.role-tile {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0.7rem 0.25rem 0.6rem;
+  border: 1px solid rgba(75, 94, 84, 0.22);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.35);
+  color: var(--moss);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  backface-visibility: hidden;
+  transition: color 0.25s ease, border-color 0.25s ease, background-color 0.25s ease;
+  animation: flipIn 0.6s var(--ease-out) both;
+  animation-delay: calc(var(--i) * 120ms + 250ms);
+}
+
+.role-tile i {
+  font-size: 1.35rem;
+  transition: transform 0.35s var(--ease-spring), color 0.25s ease;
+}
+
+.role-tile:hover {
+  border-color: rgba(75, 94, 84, 0.45);
+  color: var(--forest);
+}
+
+.role-tile.is-selected {
+  border-color: transparent;
+  background: transparent;
+  color: var(--forest);
+}
+
+.role-tile.is-selected i {
+  color: var(--summit-deep);
+  transform: translateY(-2px) scale(1.12);
+}
+
+@keyframes flipIn {
+  from { opacity: 0; transform: perspective(500px) rotateY(-100deg); }
+  to   { opacity: 1; transform: perspective(500px) rotateY(0); }
+}
+
+/* ---------------------------------------------------------------------------
+   Reduced motion: still clouds, no settle zoom
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .cloud { animation: none !important; }
+  .cloud--1 { transform: translateX(8vw); }
+  .cloud--2 { transform: translateX(46vw); }
+  .cloud--3 { transform: translateX(70vw); }
+  .cloud--4 { transform: translateX(24vw); }
+  .auth-bg__settle,
+  .auth-bg.is-finished .auth-bg__settle { animation: none; transform: none; }
+}
