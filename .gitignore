@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+instance/
+*.db
+static/exports/
+.DS_Store
+.env
+celerybeat-schedule*
