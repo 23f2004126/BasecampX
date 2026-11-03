@@ -10,6 +10,7 @@ from flask_security import current_user, hash_password, verify_password
 
 from extensions import db, security
 from models import BOOKING_STATUSES, ROLE_USER, Booking, Trek
+from utils.cache import clear_admin_cache
 from utils.decorators import role_required
 from utils.pagination import paginate
 from utils.validators import arg_choice, json_body, validate_profile_update, validation_error
@@ -94,5 +95,7 @@ def update_profile():
         response["token"] = current_user.get_auth_token()
 
     db.session.commit()
+    if "full_name" in data:
+        clear_admin_cache()  # recent bookings on the admin dashboard show this name
     response["user"] = current_user.to_dict()
     return jsonify(response)

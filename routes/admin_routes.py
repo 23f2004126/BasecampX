@@ -18,6 +18,7 @@ from models import (
     BOOKING_STATUSES, ROLE_ADMIN, ROLE_STAFF, ROLE_USER, TREK_DIFFICULTIES,
     TREK_STATUSES, Booking, Role, StaffProfile, Trek, User,
 )
+from utils.cache import cached_json, clear_admin_cache, clear_trek_cache, ttl
 from utils.decorators import role_required
 from utils.pagination import paginate
 from utils.validators import (
@@ -68,14 +69,17 @@ def trekker_to_dict(user):
 @admin_bp.route("/stats", methods=["GET"])
 @role_required(ROLE_ADMIN)
 def stats():
-    recent = Booking.query.order_by(Booking.booking_date.desc()).limit(5).all()
-    return jsonify({
-        "total_treks": Trek.query.count(),
-        "total_users": users_with_role(ROLE_USER).count(),
-        "total_staff": users_with_role(ROLE_STAFF).count(),
-        "total_bookings": Booking.query.count(),
-        "recent_bookings": [b.to_dict() for b in recent],
-    })
+    def build():
+        recent = Booking.query.order_by(Booking.booking_date.desc()).limit(5).all()
+        return {
+            "total_treks": Trek.query.count(),
+            "total_users": users_with_role(ROLE_USER).count(),
+            "total_staff": users_with_role(ROLE_STAFF).count(),
+            "total_bookings": Booking.query.count(),
+            "recent_bookings": [b.to_dict() for b in recent],
+        }
+
+    return cached_json("admin:stats", ttl("CACHE_TTL_ADMIN"), build)
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +106,7 @@ def create_trek():
     trek = Trek(**data, available_slots=data["total_slots"])  # brand-new trek: every seat free
     db.session.add(trek)
     db.session.commit()
+    clear_trek_cache(trek.id)
     return jsonify({"message": "Trek created.", "trek": trek.to_dict()}), 201
 
 
@@ -125,6 +130,7 @@ def update_trek(trek_id):
     for field, value in data.items():
         setattr(trek, field, value)
     db.session.commit()
+    clear_trek_cache(trek.id)
     return jsonify({"message": "Trek updated.", "trek": trek.to_dict()})
 
 
@@ -143,6 +149,7 @@ def delete_trek(trek_id):
 
     db.session.delete(trek)
     db.session.commit()
+    clear_trek_cache(trek_id)
     return jsonify({"message": "Trek deleted."})
 
 
@@ -169,6 +176,7 @@ def assign_staff(trek_id):
         trek.staff_id = staff.id
 
     db.session.commit()
+    clear_trek_cache(trek.id)  # staff_name is part of the cached trek data
     return jsonify({"message": "Staff assignment updated.", "trek": trek.to_dict()})
 
 
@@ -197,6 +205,7 @@ def create_staff():
         experience_years=data["experience_years"], specialization=data["specialization"]
     )
     db.session.commit()
+    clear_admin_cache()  # total_staff changed
     return jsonify({"message": "Staff member created.", "staff": staff_to_dict(user)}), 201
 
 
@@ -305,6 +314,11 @@ def last_n_months(n, today=None):
 @admin_bp.route("/reports", methods=["GET"])
 @role_required(ROLE_ADMIN)
 def reports():
+    return cached_json("admin:reports", ttl("CACHE_TTL_ADMIN"), build_reports)
+
+
+def build_reports():
+    """Chart data behind GET /api/admin/reports (runs only on a cache MISS)."""
     # Cancelled bookings don't count as "demand" in any of these charts.
     not_cancelled = Booking.status != "Cancelled"
 
@@ -332,11 +346,11 @@ def reports():
         .join(Booking).filter(not_cancelled).group_by(Trek.difficulty).all()
     )
 
-    return jsonify({
+    return {
         "bookings_per_trek": {"labels": [n for n, _ in top], "data": [c for _, c in top]},
         "bookings_per_month": {"labels": months, "data": list(per_month.values())},
         "treks_by_status": {"labels": list(TREK_STATUSES),
                             "data": [status_counts.get(s, 0) for s in TREK_STATUSES]},
         "users_by_difficulty": {"labels": list(TREK_DIFFICULTIES),
                                 "data": [difficulty_counts.get(d, 0) for d in TREK_DIFFICULTIES]},
-    })
+    }

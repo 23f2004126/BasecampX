@@ -37,8 +37,17 @@ class Config:
 
     # ---------- Cache (Redis) ----------
     CACHE_TYPE = "RedisCache"
-    CACHE_REDIS_URL = "redis://localhost:6379/0"
+    CACHE_REDIS_URL = os.environ.get("CACHE_REDIS_URL", "redis://localhost:6379/0")
     CACHE_DEFAULT_TIMEOUT = 300
+    CACHE_KEY_PREFIX = "tma:"  # keys show up as tma:treks:list:... in redis-cli
+    # Fail fast if Redis is down, so a request waits at most ~0.5s before
+    # falling back to the database instead of hanging.
+    CACHE_OPTIONS = {"socket_connect_timeout": 0.5, "socket_timeout": 0.5}
+
+    # How long each cached response lives (seconds)
+    CACHE_TTL_TREKS = 5 * 60
+    CACHE_TTL_LOCATIONS = 30 * 60
+    CACHE_TTL_ADMIN = 2 * 60
 
     # ---------- Mail (MailHog) ----------
     MAIL_SERVER = "localhost"

@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 
 from extensions import db
 from models import ROLE_USER, Booking, Trek
+from utils.cache import clear_trek_cache
 from utils.decorators import role_required
 from utils.validators import json_body, to_int, validation_error
 
@@ -97,6 +98,8 @@ def create_booking():
         db.session.rollback()
         abort(409, description="You already have an active booking for this trek.")
 
+    # Slots changed -> cached lists/details now show the wrong number. Drop them.
+    clear_trek_cache(trek.id)
     db.session.refresh(trek)
     return jsonify({
         "message": "Booking confirmed.",
@@ -125,6 +128,7 @@ def cancel_booking(booking_id):
         booking.payment_status = "Refunded"
     give_back_one_slot(trek.id)
     db.session.commit()  # status change + seat returned in one transaction
+    clear_trek_cache(trek.id)
 
     db.session.refresh(trek)
     return jsonify({

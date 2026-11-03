@@ -14,6 +14,7 @@ from flask_security import hash_password
 
 from app import create_app
 from extensions import db, security
+from utils.cache import clear_trek_cache
 from models import ROLE_ADMIN, ROLE_STAFF, ROLE_USER, Booking, StaffProfile, Trek, User
 
 # ---------------------------------------------------------------------------
@@ -181,6 +182,7 @@ def seed():
         created.append(f"booking  {user.email} -> {trek_name} [{status}/{payment}]")
 
     db.session.commit()
+    clear_trek_cache()  # data was written directly: drop anything cached
 
     # 8. Report
     if created:

@@ -11,6 +11,7 @@ from flask_security import current_user, hash_password, verify_password
 
 from extensions import db, security
 from models import ROLE_USER
+from utils.cache import clear_admin_cache
 from utils.decorators import json_error, token_required
 from utils.validators import clean_email, json_body as _json_body
 from utils.validators import validate_registration, validation_error
@@ -38,6 +39,7 @@ def register():
         roles=[datastore.find_role(ROLE_USER)],
     )
     db.session.commit()
+    clear_admin_cache()  # total_users changed
     return jsonify({"message": "Registration successful.", "user": user.to_dict()}), 201
 
 

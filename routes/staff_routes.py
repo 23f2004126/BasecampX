@@ -15,6 +15,7 @@ from flask_security import current_user
 
 from extensions import db
 from models import ROLE_STAFF, Booking, Trek
+from utils.cache import clear_trek_cache
 from utils.decorators import role_required
 from utils.pagination import paginate
 from utils.validators import json_body, match_choice, to_int, validation_error
@@ -140,6 +141,7 @@ def update_trek(trek_id):
     if "available_slots" in body:
         trek.available_slots = slots
     db.session.commit()
+    clear_trek_cache(trek.id)
     return jsonify({"message": "Trek updated.", "trek": trek_with_count(trek)})
 
 
@@ -150,6 +152,7 @@ def start_trek(trek_id):
     require_status(trek, ("Open", "Closed"), "start")
     trek.status = "Ongoing"
     db.session.commit()
+    clear_trek_cache(trek.id)
     return jsonify({"message": "Trek started.", "trek": trek_with_count(trek)})
 
 
@@ -166,6 +169,7 @@ def complete_trek(trek_id):
         .update({"status": "Completed"}, synchronize_session=False)
     )
     db.session.commit()  # trek status + all bookings saved together
+    clear_trek_cache(trek.id)
     return jsonify({
         "message": "Trek completed.",
         "bookings_completed": completed,
