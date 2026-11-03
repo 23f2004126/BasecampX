@@ -1,79 +1,93 @@
 /**
- * Client-side routes (hash mode: URLs look like /#/login, so Flask only
- * ever needs to serve "/" and refreshing any page still works).
+ * Client-side routes (hash mode: URLs look like /#/admin/treks, so Flask only
+ * ever serves "/" and refreshing any page still works).
  *
- * Route meta:
- *   guestOnly: true      -> logged-in users are sent to their dashboard
- *   role: 'admin' | ...  -> must be logged in with this role
+ * Each role has ONE parent route that renders AppLayout (sidebar + navbar +
+ * footer) and a list of child pages rendered inside it. The parent carries
+ * meta.role, and the guard below checks it for every child.
+ *
+ *   guestOnly: true   -> logged-in users are sent to their own dashboard
+ *   role: 'admin'...  -> no token  -> /login (and come back after logging in)
+ *                        wrong role -> their own dashboard
  */
 import { createRouter, createWebHashHistory } from 'vue-router';
 import Login from './pages/Login.js';
 import Register from './pages/Register.js';
 import NotFound from './pages/NotFound.js';
-import Loader from './components/Loader.js';
+import AppLayout from './components/AppLayout.js';
 import EmptyState from './components/EmptyState.js';
-import TrekkerFooter from './components/TrekkerFooter.js';
-import { get, post } from './api.js';
-import { ROLE_LABELS, auth, clearAuth, dashboardPath, isLoggedIn } from './store.js';
+import AdminSettings from './pages/admin/Settings.js';
+import StaffParticipants from './pages/staff/Participants.js';
+import { auth, dashboardPath, isLoggedIn } from './store.js';
 
 /**
- * TEMPORARY dashboard used for all three roles until the real dashboards are
- * built (Phase 5b). It proves the login redirect works, checks the token with
- * GET /api/me, and shows the shared Loader, EmptyState and footer.
+ * TEMPORARY: stands in for pages that are built in later parts of Phase 5b,
+ * so every menu link already works and the layout can be tested.
  */
-const DashboardPlaceholder = {
-  name: 'DashboardPlaceholder',
-  components: { Loader, EmptyState, TrekkerFooter },
-  data() {
-    return { me: null, roleLabels: ROLE_LABELS };
-  },
-  async mounted() {
-    try {
-      this.me = await get('/me');
-    } catch (error) {
-      this.$toast.error(error.message);
-    }
-  },
-  methods: {
-    async logout() {
-      try {
-        await post('/logout');
-      } catch {
-        /* token may already be invalid - log out locally anyway */
-      }
-      clearAuth();
-      this.$toast.info('You have been signed out.');
-      this.$router.replace('/login');
-    },
-  },
+const ComingSoon = {
+  name: 'ComingSoon',
+  components: { EmptyState },
   template: `
-    <div class="page-shell">
-      <main class="container py-5 flex-grow-1">
-        <Loader v-if="!me" label="Checking your session…" />
-        <template v-else>
-          <p class="text-moss mb-1 fw-semibold">{{ roleLabels[me.role] }} dashboard</p>
-          <h1 class="mb-4">Hi, {{ me.full_name }} 👋</h1>
-          <EmptyState
-            title="Your dashboard is on its way"
-            message="This page will be built in the next phase. Your login worked and your token is valid."
-            action-label="Sign out"
-            icon="bi-box-arrow-right"
-            @action="logout"
-          />
-        </template>
-      </main>
-      <TrekkerFooter />
-    </div>
+    <section>
+      <h1 class="page-title">{{ $route.meta.title }}</h1>
+      <EmptyState
+        title="This page is on its way"
+        :message="'It will be built in part ' + $route.meta.part + ' of Phase 5b.'"
+      />
+    </section>
   `,
 };
+
+// A helper so each child route is one readable line.
+const page = (path, title, part, component = ComingSoon) => ({ path, component, meta: { title, part } });
 
 const routes = [
   { path: '/', redirect: () => (isLoggedIn() ? dashboardPath() : '/login') },
   { path: '/login', component: Login, meta: { guestOnly: true, title: 'Sign in' } },
   { path: '/register', component: Register, meta: { guestOnly: true, title: 'Register' } },
-  { path: '/admin', component: DashboardPlaceholder, meta: { role: 'admin', title: 'Admin' } },
-  { path: '/staff', component: DashboardPlaceholder, meta: { role: 'staff', title: 'Staff' } },
-  { path: '/user', component: DashboardPlaceholder, meta: { role: 'user', title: 'My treks' } },
+
+  {
+    path: '/admin',
+    component: AppLayout,
+    meta: { role: 'admin' },
+    children: [
+      page('', 'Dashboard', 2),
+      page('treks', 'Manage Treks', 2),
+      page('staff', 'Trekking Staff', 2),
+      page('staff/new', 'Create Trekking Staff', 2),
+      page('users', 'Users (Trekkers)', 2),
+      page('bookings', 'All Bookings', 2),
+      page('search', 'Search', 2),
+      page('reports', 'Reports', 2),
+      page('settings', 'Settings', 2, AdminSettings),
+    ],
+  },
+  {
+    path: '/staff',
+    component: AppLayout,
+    meta: { role: 'staff' },
+    children: [
+      page('', 'My Dashboard', 3),
+      page('treks', 'My Treks', 3),
+      page('treks/:id(\\d+)', 'Manage Trek', 3),
+      page('participants', 'Participants', 3, StaffParticipants),
+      page('profile', 'Profile', 3),
+    ],
+  },
+  {
+    path: '/user',
+    component: AppLayout,
+    meta: { role: 'user' },
+    children: [
+      page('', 'Dashboard', 4),
+      page('treks', 'Browse Treks', 4),
+      page('treks/:id(\\d+)', 'Trek Details', 4),
+      page('bookings', 'My Bookings', 4),
+      page('history', 'Trekking History', 4),
+      page('profile', 'Profile', 4),
+    ],
+  },
+
   // Must stay last: anything unknown shows the 404 page.
   { path: '/:pathMatch(.*)*', component: NotFound, meta: { title: 'Page not found' } },
 ];
@@ -88,11 +102,13 @@ router.beforeEach((to) => {
   if (to.meta.guestOnly && isLoggedIn()) {
     return dashboardPath();
   }
-  if (to.meta.role) {
+  // Children inherit the role of their parent layout route.
+  const requiredRole = to.matched.find((record) => record.meta.role)?.meta.role;
+  if (requiredRole) {
     if (!isLoggedIn()) {
       return { path: '/login', query: { redirect: to.fullPath } };
     }
-    if (auth.role !== to.meta.role) {
+    if (auth.role !== requiredRole) {
       return dashboardPath(); // wrong area for this role -> their own dashboard
     }
   }

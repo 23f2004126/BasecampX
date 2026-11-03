@@ -9,7 +9,7 @@
 import RoleSelector from './RoleSelector.js';
 import { addRipple, canHover, confettiBurst, typewriter } from '../utils/motion.js';
 
-const TITLE = 'Welcome back, trekker';
+const TITLE = 'Welcome Back!'; // wireframe screen 1
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 const ROLE_NOTES = {
@@ -32,6 +32,7 @@ export default {
       role: 'user',
       email: this.initialEmail,
       password: '',
+      remember: false, // wireframe: 'Remember me' (unchecked = logged in for this tab only)
       showPassword: false,
       touched: { email: false, password: false },
       submitted: false,
@@ -88,6 +89,7 @@ export default {
           email: this.email.trim(),
           password: this.password,
           role: this.role,
+          remember: this.remember,
         });
         // Celebrate from the button, then let the page redirect.
         const rect = this.$refs.button.getBoundingClientRect();
@@ -108,16 +110,23 @@ export default {
       aria-labelledby="login-title"
       @animationend.self="shaking = false"
     >
+      <div class="glass-card__brand field-in" style="--i: -3">
+        <i class="bi bi-triangle-half" aria-hidden="true"></i>
+        <span>Trekking Management Application</span>
+      </div>
+
       <h1 id="login-title" class="glass-card__title type-title" :aria-label="fullTitle">
         <span class="type-title__ghost" aria-hidden="true">{{ fullTitle }}</span>
         <span class="type-title__live" aria-hidden="true">{{ title }}<span class="type-caret"></span></span>
       </h1>
-      <p class="glass-card__subtitle">Sign in to continue your journey.</p>
+      <p class="glass-card__subtitle">Login to your account</p>
 
+      <p class="glass-card__eyebrow">Roles</p>
       <RoleSelector v-model="role" class="mb-3" />
 
       <form novalidate @submit.prevent="submit">
-        <div class="form-floating mb-3 field-in" style="--i: 0">
+        <div class="form-floating mb-3 field-in has-icon" style="--i: 0">
+          <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
           <input
             id="login-email"
             ref="email"
@@ -136,7 +145,8 @@ export default {
           <div id="login-email-error" class="invalid-feedback">{{ errors.email }}</div>
         </div>
 
-        <div class="form-floating mb-3 field-in password-field" style="--i: 1">
+        <div class="form-floating mb-2 field-in password-field has-icon" style="--i: 1">
+          <i class="bi bi-lock field-icon" aria-hidden="true"></i>
           <input
             id="login-password"
             ref="password"
@@ -164,6 +174,11 @@ export default {
           <div id="login-password-error" class="invalid-feedback">{{ errors.password }}</div>
         </div>
 
+        <div class="form-check mb-3 field-in" style="--i: 2">
+          <input id="login-remember" v-model="remember" class="form-check-input" type="checkbox">
+          <label class="form-check-label" for="login-remember">Remember me</label>
+        </div>
+
         <div v-if="serverError" class="form-alert field-in" role="alert">
           <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
           <span>{{ serverError }}</span>
@@ -173,23 +188,29 @@ export default {
           ref="button"
           type="submit"
           class="btn btn-summit btn-lg w-100 has-ripple field-in"
-          style="--i: 2"
+          style="--i: 3"
           :disabled="loading"
           @pointerdown="addRipple"
         >
           <span v-if="loading" class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
-          {{ loading ? 'Signing in…' : 'Sign in' }}
+          {{ loading ? 'Logging in…' : 'Login' }}
         </button>
       </form>
 
-      <div class="glass-card__footer field-in" style="--i: 3">
+      <div class="glass-card__footer field-in" style="--i: 4">
         <p v-if="role === 'user'" class="mb-0">
-          New here?
-          <router-link to="/register" class="fw-semibold">Register as Trekker</router-link>
+          Don't have an account?<br>
+          <router-link to="/register" class="fw-semibold">Register as User (Trekker)</router-link>
         </p>
         <p v-else class="mb-0 text-moss small">
           <i class="bi bi-info-circle me-1" aria-hidden="true"></i>{{ roleNote }}
         </p>
+      </div>
+
+      <div class="glass-note field-in" style="--i: 5">
+        <i class="bi bi-info-circle" aria-hidden="true"></i>
+        <span><strong>Note:</strong> Only Users (Trekkers) can register themselves.
+        Trekking Staff are created by Admin.</span>
       </div>
     </section>
   `,

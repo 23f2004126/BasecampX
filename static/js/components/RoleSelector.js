@@ -9,8 +9,8 @@
  */
 const ROLES = [
   { value: 'admin', label: 'Admin', icon: 'bi-shield-lock' },
-  { value: 'staff', label: 'Trek Staff', icon: 'bi-compass' },
-  { value: 'user', label: 'Trekker', icon: 'bi-backpack2' },
+  { value: 'staff', label: 'Trekking Staff', icon: 'bi-compass' },
+  { value: 'user', label: 'User (Trekker)', icon: 'bi-backpack2' },
 ];
 
 export default {
@@ -41,7 +41,7 @@ export default {
     },
   },
   template: `
-    <div class="role-selector" role="radiogroup" aria-label="Sign in as" @keydown="onKey">
+    <div class="role-selector" role="radiogroup" aria-label="Roles" @keydown="onKey">
       <span
         class="role-selector__highlight"
         :style="{ transform: 'translateX(calc(' + selectedIndex + ' * (100% + var(--role-gap))))' }"

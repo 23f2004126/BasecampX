@@ -27,9 +27,9 @@ export default {
     },
   },
   methods: {
-    async login({ email, password, role }) {
+    async login({ email, password, role, remember }) {
       const data = await post('/login', { email, password }, { withAuth: false });
-      setAuth(data);
+      setAuth(data, { remember });
       this.chosenRole = role;
       return data;
     },

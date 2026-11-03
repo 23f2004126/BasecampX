@@ -543,3 +543,77 @@
   .auth-bg__settle,
   .auth-bg.is-finished .auth-bg__settle { animation: none; transform: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   Wireframe additions (screens 1-2): app title, "Roles" label, field icons,
+   Remember me, note box
+   --------------------------------------------------------------------------- */
+.glass-card__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0.9rem;
+  color: var(--moss);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.glass-card__brand i {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--forest);
+  color: var(--summit);
+  font-size: 0.95rem;
+}
+
+.glass-card__eyebrow {
+  margin-bottom: 0.4rem;
+  color: var(--moss);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* Leading icon inside a floating-label field */
+.has-icon > .form-control { padding-left: 2.6rem; }
+.has-icon > label { padding-left: 2.6rem; }
+
+.field-icon {
+  position: absolute;
+  top: 1.15rem;
+  left: 0.95rem;
+  z-index: 4;
+  color: var(--moss);
+  pointer-events: none;
+}
+
+.field-hint {
+  margin-top: 0.25rem;
+  color: var(--moss);
+  font-size: 0.78rem;
+}
+
+.glass-card .form-check-input {
+  border-color: rgba(75, 94, 84, 0.45);
+}
+
+.glass-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 1rem;
+  padding: 10px 12px;
+  border: 1px solid rgba(76, 160, 180, 0.35);
+  border-radius: var(--radius-sm);
+  background: rgba(76, 160, 180, 0.1);
+  color: var(--forest);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.glass-note i { color: var(--sky); margin-top: 1px; }

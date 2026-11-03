@@ -44,6 +44,19 @@ export async function api(path, { method = 'GET', body, withAuth = true } = {}) 
   return data;
 }
 
+/**
+ * Log out: tell the server (it invalidates every token for this user), then
+ * clear local storage. Local logout happens even if the server call fails.
+ */
+export async function logout() {
+  try {
+    await api('/logout', { method: 'POST' });
+  } catch {
+    /* token already invalid / offline: still log out locally */
+  }
+  clearAuth();
+}
+
 export const get = (path) => api(path);
 export const post = (path, body, options = {}) => api(path, { method: 'POST', body, ...options });
 export const put = (path, body, options = {}) => api(path, { method: 'PUT', body, ...options });
