@@ -1,0 +1,90 @@
+"""
+Authentication API.
+
+POST /api/register  - create a trekker account
+POST /api/login     - check email + password, return an auth token
+POST /api/logout    - invalidate the current user's tokens
+GET  /api/me        - details of the logged-in user
+"""
+from flask import Blueprint, jsonify, request
+from flask_security import current_user, hash_password, verify_password
+
+from extensions import db, security
+from models import ROLE_USER
+from utils.decorators import json_error, token_required
+from utils.validators import clean_email, validate_registration
+
+auth_bp = Blueprint("auth", __name__, url_prefix="/api")
+
+
+def _json_body():
+    """Request body as a dict ({} if it is missing or not a JSON object)."""
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
+@auth_bp.route("/register", methods=["POST"])
+def register():
+    data, errors = validate_registration(_json_body())
+    if errors:
+        return jsonify({"error": "Validation failed.", "fields": errors}), 400
+
+    datastore = security.datastore
+    if datastore.find_user(email=data["email"]):
+        return json_error("An account with this email already exists.", 409)
+
+    # Public sign-up is for trekkers only. Any "role" in the request is ignored
+    # on purpose, so nobody can register themselves as admin or staff.
+    user = datastore.create_user(
+        email=data["email"],
+        password=hash_password(data["password"]),
+        full_name=data["full_name"],
+        contact_number=data["contact_number"],
+        roles=[datastore.find_role(ROLE_USER)],
+    )
+    db.session.commit()
+    return jsonify({"message": "Registration successful.", "user": user.to_dict()}), 201
+
+
+@auth_bp.route("/login", methods=["POST"])
+def login():
+    data = _json_body()
+    email = clean_email(data.get("email") or "")
+    password = data.get("password") or ""
+    if not email or not password:
+        return json_error("Email and password are required.", 400)
+
+    user = security.datastore.find_user(email=email)
+    # Same message whether the email or the password is wrong, so attackers
+    # can't use this endpoint to discover which emails are registered.
+    if not user or not verify_password(password, user.password):
+        return json_error("Invalid email or password.", 401)
+    if user.is_blacklisted:
+        return json_error("Your account has been blacklisted. Contact the admin.", 403)
+    if not user.active:
+        return json_error("Your account is inactive. Contact the admin.", 403)
+
+    return jsonify(
+        {
+            "token": user.get_auth_token(),
+            "role": user.primary_role,
+            "id": user.id,
+            "full_name": user.full_name,
+        }
+    ), 200
+
+
+@auth_bp.route("/logout", methods=["POST"])
+@token_required
+def logout():
+    # Tokens can't be "deleted" (they are not stored on the server). Instead we
+    # change fs_uniquifier: every token signed with the old value stops working.
+    security.datastore.set_uniquifier(current_user)
+    db.session.commit()
+    return jsonify({"message": "Logged out."}), 200
+
+
+@auth_bp.route("/me", methods=["GET"])
+@token_required
+def me():
+    return jsonify(current_user.to_dict()), 200
