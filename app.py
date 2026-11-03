@@ -36,8 +36,12 @@ def create_app():
     from routes.admin_routes import admin_bp
     from routes.auth_routes import auth_bp
     from routes.booking_routes import booking_bp
+    from routes.notification_routes import notification_bp
+    from routes.payment_routes import payment_bp
+    from routes.review_routes import review_bp
     from routes.staff_routes import staff_bp
     from routes.task_routes import task_bp
+    from routes.waitlist_routes import waitlist_bp
     from routes.trek_routes import trek_bp
     from routes.user_routes import user_bp
 
@@ -48,6 +52,10 @@ def create_app():
     app.register_blueprint(trek_bp)
     app.register_blueprint(user_bp)
     app.register_blueprint(task_bp)
+    app.register_blueprint(payment_bp)
+    app.register_blueprint(waitlist_bp)
+    app.register_blueprint(review_bp)
+    app.register_blueprint(notification_bp)
 
     @app.before_request
     def protect_exports():

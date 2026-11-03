@@ -5,6 +5,8 @@ Background jobs (run by the Celery worker).
     monthly_report       - beat: 1st of month 09:00   - HTML + PDF report of last month to the admin(s)
     export_bookings_csv  - on demand (user clicks Export CSV) - writes a CSV, emails it, returns the filename
     send_staff_welcome   - on demand (admin creates staff)    - login details for the new staff member
+    send_booking_email   - on demand - booking confirmed (paid) / cancelled / waitlist spot opened
+    auto_cancel_unpaid   - beat: every 10 minutes - cancel bookings left unpaid for 30 minutes
 
 Each task runs inside the Flask app context (see celery_app.FlaskTask).
 """
@@ -20,9 +22,11 @@ from flask import current_app
 from sqlalchemy import func
 
 from extensions import db
-from models import ROLE_ADMIN, ROLE_STAFF, Booking, Role, Trek, User
+from models import PAYMENT_WINDOW_MINUTES, ROLE_ADMIN, ROLE_STAFF, Booking, Role, Trek, User
 from tasks.celery_app import celery
 from tasks.mailer import render, send_email
+from utils.bookings import cancel_booking, utcnow_naive
+from utils.cache import clear_trek_cache
 from utils.pdf import html_to_pdf
 
 logger = get_task_logger(__name__)
@@ -298,3 +302,78 @@ def send_staff_welcome(user_id, password):
     )
     send_email(user.email, "Your TMA Trekking Staff account", html)
     return {"user_id": None, "sent": True}
+
+
+# ---------------------------------------------------------------------------
+# Booking emails (confirmed / cancelled / promoted from waitlist)
+# ---------------------------------------------------------------------------
+BOOKING_EMAILS = {
+    "confirmed": ("Booking confirmed: {trek}", "You're going to {trek}!"),
+    "cancelled": ("Booking cancelled: {trek}", "Your booking for {trek} was cancelled"),
+    "promoted": ("A spot opened up on {trek}", "Good news: a spot opened up on {trek}"),
+}
+
+
+@celery.task(name="tasks.send_booking_email")
+def send_booking_email(booking_id, kind, reason=""):
+    booking = db.session.get(Booking, booking_id)
+    if booking is None or kind not in BOOKING_EMAILS:
+        return {"user_id": None, "sent": False}
+    trek, user = booking.trek, booking.user
+    subject, heading = (text.format(trek=trek.name) for text in BOOKING_EMAILS[kind])
+    paid = next((p for p in reversed(booking.payments) if p.status == "Success"), None)
+    html = render(
+        "booking_email.html",
+        subject=subject,
+        kind=kind,
+        heading=heading,
+        reason=reason,
+        name=user.full_name or "trekker",
+        booking=booking,
+        trek=trek,
+        start_date=_fmt(trek.start_date),
+        end_date=_fmt(trek.end_date),
+        amount=f"₹{booking.amount:,.0f}",
+        transaction_ref=paid.transaction_ref if paid else None,
+        refunded=booking.payment_status == "Refunded",
+        window=PAYMENT_WINDOW_MINUTES,
+        bookings_url=f"{current_app.config['APP_BASE_URL']}/#/user/bookings",
+    )
+    send_email(user.email, subject, html)
+    return {"user_id": None, "sent": True, "kind": kind}
+
+
+# ---------------------------------------------------------------------------
+# Auto-cancel bookings that were never paid
+# ---------------------------------------------------------------------------
+@celery.task(name="tasks.auto_cancel_unpaid")
+def auto_cancel_unpaid():
+    """
+    A booking (or waitlist promotion) holds a seat for PAYMENT_WINDOW_MINUTES.
+    After that, release the seat, tell the user, and offer it to the waitlist.
+    """
+    cutoff = utcnow_naive() - timedelta(minutes=PAYMENT_WINDOW_MINUTES)
+    stale = (
+        Booking.query.filter(Booking.status == "Booked", Booking.payment_status == "Pending",
+                             Booking.booking_date < cutoff)
+        .order_by(Booking.booking_date).all()
+    )
+    reason = f" because payment wasn't completed within {PAYMENT_WINDOW_MINUTES} minutes"
+    cancelled, promoted_ids = [], []
+    for booking in stale:
+        # Each booking in its own transaction: one failure doesn't undo the others.
+        ok, promoted = cancel_booking(booking, reason, only_if_unpaid=True)
+        if not ok:  # paid (or cancelled) a moment ago - leave it alone
+            db.session.rollback()
+            continue
+        db.session.commit()
+        clear_trek_cache(booking.trek_id)
+        cancelled.append(booking.id)
+        promoted_ids += [b.id for b in promoted]
+        send_booking_email.delay(booking.id, "cancelled", reason)
+        for b in promoted:
+            send_booking_email.delay(b.id, "promoted")
+
+    logger.info("Auto-cancel: %s cancelled, %s promoted from waitlist", len(cancelled), len(promoted_ids))
+    return {"user_id": None, "job": "auto_cancel_unpaid", "cancelled": cancelled, "promoted": promoted_ids}
+

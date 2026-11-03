@@ -1,20 +1,24 @@
 """
 Trekker API (role: user). Everything is under /api/user.
 
-GET /dashboard, GET /bookings, GET /history, GET+PUT /profile, POST /export
+GET /dashboard, GET /bookings, GET /history, GET+PUT /profile, POST /export,
+GET /bookings/<id>/certificate (PDF)
 """
 from datetime import date
+from io import BytesIO
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, abort, jsonify, send_file
 from flask_security import current_user, hash_password, verify_password
 
 from extensions import db, security
 from models import BOOKING_STATUSES, ROLE_USER, Booking, Trek
-from utils.cache import clear_admin_cache
+from tasks.mailer import render
 from tasks.tasks import export_bookings_csv
+from utils.cache import clear_admin_cache
 from utils.decorators import role_required
 from utils.jobs import enqueue
 from utils.pagination import paginate
+from utils.pdf import PdfError, html_to_pdf
 from utils.validators import arg_choice, json_body, validate_profile_update, validation_error
 
 user_bp = Blueprint("user", __name__, url_prefix="/api/user")
@@ -109,3 +113,48 @@ def update_profile():
         clear_admin_cache()  # recent bookings on the admin dashboard show this name
     response["user"] = current_user.to_dict()
     return jsonify(response)
+
+
+# ---------------------------------------------------------------------------
+# Completion certificate
+# ---------------------------------------------------------------------------
+def _fmt(d):
+    return d.strftime("%d %B %Y") if d else "—"
+
+
+@user_bp.route("/bookings/<int:booking_id>/certificate", methods=["GET"])
+@role_required(ROLE_USER)
+def certificate(booking_id):
+    booking = db.session.get(Booking, booking_id)
+    if booking is None or booking.user_id != current_user.id:
+        abort(404, description="Booking not found.")
+    if booking.status != "Completed":
+        abort(400, description="Certificates are available once the trek is completed.")
+
+    trek = booking.trek
+    if not booking.certificate_no:
+        # Issued once and then kept: the booking id makes it unique (TMA-2026-000005).
+        year = (trek.end_date or date.today()).year
+        booking.certificate_no = f"TMA-{year}-{booking.id:06d}"
+        db.session.commit()
+
+    html = render(
+        "certificate.html",
+        certificate_no=booking.certificate_no,
+        trekker_name=current_user.full_name,
+        trek_name=trek.name,
+        location=trek.location,
+        start_date=_fmt(trek.start_date),
+        end_date=_fmt(trek.end_date),
+        difficulty=trek.difficulty,
+        duration=trek.duration_days,
+        leader=trek.staff.full_name if trek.staff else "TMA Team",
+        issue_date=_fmt(date.today()),
+    )
+    try:
+        pdf = html_to_pdf(html)
+    except PdfError as error:
+        abort(500, description=str(error))
+    return send_file(BytesIO(pdf), mimetype="application/pdf", as_attachment=True,
+                     download_name=f"certificate-{booking.certificate_no}.pdf")
+

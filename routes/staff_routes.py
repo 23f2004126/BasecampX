@@ -14,9 +14,13 @@ from flask import Blueprint, abort, jsonify
 from flask_security import current_user
 
 from extensions import db
-from models import ROLE_STAFF, Booking, Trek
+from models import ROLE_STAFF, Booking, Trek, Waitlist
+from tasks.tasks import send_booking_email
+from utils.bookings import promote_from_waitlist
 from utils.cache import clear_trek_cache
 from utils.decorators import role_required
+from utils.jobs import enqueue_quietly
+from utils.notify import notify_many
 from utils.pagination import paginate
 from utils.validators import json_body, match_choice, to_int, validation_error
 
@@ -67,6 +71,14 @@ def require_status(trek, allowed, action):
     if trek.status not in allowed:
         abort(400, description=f"Cannot {action} a trek that is {trek.status} "
                                f"(must be {' or '.join(allowed)}).")
+
+
+def booked_user_ids(trek_id):
+    return [b.user_id for b in Booking.query.filter_by(trek_id=trek_id, status="Booked")]
+
+
+def tell_booked_trekkers(trek, message):
+    notify_many(booked_user_ids(trek.id), f"{trek.name}: trek update", message, "trek", "/user/bookings")
 
 
 # ---------------------------------------------------------------------------
@@ -136,13 +148,19 @@ def update_trek(trek_id):
     if errors:
         return validation_error(errors)
 
-    if "status" in body:
+    if "status" in body and status != trek.status:
         trek.status = status
+        tell_booked_trekkers(trek, f"{trek.name} is now {status}.")
     if "available_slots" in body:
         trek.available_slots = slots
+    # More free seats (or reopened): offer them to the waitlist in the same transaction.
+    promoted = promote_from_waitlist(trek.id)
     db.session.commit()
     clear_trek_cache(trek.id)
-    return jsonify({"message": "Trek updated.", "trek": trek_with_count(trek)})
+    for booking in promoted:
+        enqueue_quietly(send_booking_email, booking.id, "promoted")
+    return jsonify({"message": "Trek updated.", "trek": trek_with_count(trek),
+                    "promoted_from_waitlist": len(promoted)})
 
 
 @staff_bp.route("/treks/<int:trek_id>/start", methods=["PUT"])
@@ -151,6 +169,13 @@ def start_trek(trek_id):
     trek = get_my_trek(trek_id)
     require_status(trek, ("Open", "Closed"), "start")
     trek.status = "Ongoing"
+    tell_booked_trekkers(trek, f"{trek.name} has started. Have a great trek!")
+    # The trek has left: nobody on the waitlist can get a seat any more.
+    waiting = Waitlist.query.filter_by(trek_id=trek.id, status="Waiting").all()
+    for entry in waiting:
+        entry.status = "Left"
+    notify_many([w.user_id for w in waiting], "Waitlist closed",
+                f"{trek.name} has started, so its waitlist is closed.", "waitlist", "/user/treks")
     db.session.commit()
     clear_trek_cache(trek.id)
     return jsonify({"message": "Trek started.", "trek": trek_with_count(trek)})
@@ -163,12 +188,16 @@ def complete_trek(trek_id):
     require_status(trek, ("Ongoing",), "complete")
 
     trek.status = "Completed"
+    finishers = booked_user_ids(trek.id)
     # Everyone still "Booked" actually went on the trek -> their booking is now history.
     completed = (
         Booking.query.filter_by(trek_id=trek.id, status="Booked")
         .update({"status": "Completed"}, synchronize_session=False)
     )
-    db.session.commit()  # trek status + all bookings saved together
+    notify_many(finishers, f"You completed {trek.name}!",
+                "Rate your trek and download your completion certificate from History.",
+                "trek", "/user/history")
+    db.session.commit()  # trek status + all bookings + notifications saved together
     clear_trek_cache(trek.id)
     return jsonify({
         "message": "Trek completed.",

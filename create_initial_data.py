@@ -11,11 +11,15 @@ from datetime import date, datetime, timedelta, timezone
 
 from flask import current_app
 from flask_security import hash_password
+from sqlalchemy import inspect, text
 
 from app import create_app
 from extensions import db, security
+from models import (
+    ROLE_ADMIN, ROLE_STAFF, ROLE_USER, TREK_DIFFICULTIES, Booking, ChecklistItem, Notification, Payment,
+    Review, StaffProfile, Trek, User,
+)
 from utils.cache import clear_trek_cache
-from models import ROLE_ADMIN, ROLE_STAFF, ROLE_USER, Booking, StaffProfile, Trek, User
 
 # ---------------------------------------------------------------------------
 # Demo data
@@ -74,9 +78,50 @@ TREKS = [
 BOOKINGS = [
     (0, "Everest Base Camp", "Booked", "Paid"),
     (2, "Everest Base Camp", "Booked", "Paid"),
-    (1, "Roopkund", "Booked", "Pending"),
+    (1, "Roopkund", "Booked", "Paid"),
     (2, "Roopkund", "Cancelled", "Refunded"),  # history: cancelled booking
     (0, "Kuari Pass", "Completed", "Paid"),     # history: completed trek
+    (1, "Kuari Pass", "Completed", "Paid"),
+    (2, "Kuari Pass", "Completed", "Paid"),
+]
+
+# (trekker index, rating, comment) - reviews of the completed Kuari Pass trek
+REVIEWS = [
+    (0, 5, "Stunning views of Nanda Devi and a brilliant trek leader. Well organised from start to finish."),
+    (1, 4, "Great trek for beginners. Day 3 was tough in the snow but totally worth it."),
+    (2, 5, "Loved the campsites and the food. Would book with TMA again."),
+]
+
+# Packing checklist defaults: (item, category, needed from difficulty, essential from difficulty or None)
+LEVEL = {d: i for i, d in enumerate(TREK_DIFFICULTIES)}  # Easy 0, Moderate 1, Hard 2
+CHECKLIST = [
+    ("Government photo ID", "Documents", "Easy", "Easy"),
+    ("Trek booking confirmation", "Documents", "Easy", "Easy"),
+    ("Medical fitness certificate", "Documents", "Hard", "Hard"),
+    ("Travel insurance details", "Documents", "Moderate", "Hard"),
+    ("Moisture-wicking T-shirts (2-3)", "Clothing", "Easy", "Easy"),
+    ("Fleece jacket", "Clothing", "Easy", "Easy"),
+    ("Waterproof rain jacket", "Clothing", "Easy", "Easy"),
+    ("Trekking pants (2 pairs)", "Clothing", "Easy", None),
+    ("Woollen socks (3 pairs)", "Clothing", "Easy", "Easy"),
+    ("Woollen cap and gloves", "Clothing", "Easy", "Moderate"),
+    ("Thermal innerwear", "Clothing", "Moderate", "Moderate"),
+    ("Down jacket", "Clothing", "Moderate", "Moderate"),
+    ("Balaclava and waterproof gloves", "Clothing", "Hard", "Hard"),
+    ("Broken-in trekking shoes", "Gear", "Easy", "Easy"),
+    ("Backpack (40-50 L) with rain cover", "Gear", "Easy", "Easy"),
+    ("Water bottles (2 L in total)", "Gear", "Easy", "Easy"),
+    ("Headlamp with spare batteries", "Gear", "Easy", "Easy"),
+    ("UV-protection sunglasses", "Gear", "Easy", "Moderate"),
+    ("Trekking poles", "Gear", "Moderate", "Hard"),
+    ("Gaiters", "Gear", "Hard", None),
+    ("Microspikes", "Gear", "Hard", "Hard"),
+    ("Personal medicines", "Health", "Easy", "Easy"),
+    ("Sunscreen (SPF 50) and lip balm", "Health", "Easy", "Easy"),
+    ("Basic first-aid kit", "Health", "Easy", None),
+    ("ORS / electrolyte sachets", "Health", "Easy", None),
+    ("Hand sanitiser and wet wipes", "Health", "Easy", None),
+    ("Altitude-sickness medicine (ask your doctor)", "Health", "Moderate", "Hard"),
 ]
 
 
@@ -95,11 +140,28 @@ def get_or_create_user(email, password, role, **fields):
     return user, True
 
 
+def upgrade_schema():
+    """
+    db.create_all() creates NEW tables but never changes existing ones.
+    Databases created before Phase 8 lack booking.certificate_no, so add it
+    (and its unique index) once. Safe to run again: it checks first.
+    """
+    columns = [c["name"] for c in inspect(db.engine).get_columns("booking")] \
+        if inspect(db.engine).has_table("booking") else None
+    if columns is None or "certificate_no" in columns:
+        return []
+    with db.engine.begin() as conn:
+        conn.execute(text("ALTER TABLE booking ADD COLUMN certificate_no VARCHAR(30)"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_booking_certificate_no ON booking (certificate_no)"))
+    return ["schema   booking.certificate_no column added"]
+
+
 def seed():
     created = []  # human-readable log of everything new
     datastore = security.datastore
 
-    # 1. Tables
+    # 1. Tables (+ upgrade older databases)
+    created += upgrade_schema()
     db.create_all()
 
     # 2. Roles
@@ -180,6 +242,54 @@ def seed():
             trek.available_slots -= 1
         db.session.add(booking)
         created.append(f"booking  {user.email} -> {trek_name} [{status}/{payment}]")
+    db.session.flush()
+
+    seeded = [Booking.query.filter_by(user=trekkers[i], trek=treks[n], status=st).first()
+              for i, n, st, _ in BOOKINGS]
+
+    # 8. Payments for the seeded paid/refunded bookings
+    for booking in seeded:
+        if booking.payments or booking.payment_status not in ("Paid", "Refunded"):
+            continue
+        db.session.add(Payment(booking=booking, amount=booking.amount, method="UPI", status="Success"))
+        if booking.payment_status == "Refunded":
+            db.session.add(Payment(booking=booking, amount=booking.amount, method="UPI", status="Refunded"))
+        created.append(f"payment  booking #{booking.id} [{booking.payment_status}]")
+
+    # 9. Reviews of the completed trek
+    for trekker_idx, rating, comment in REVIEWS:
+        booking = Booking.query.filter_by(user=trekkers[trekker_idx], trek=treks["Kuari Pass"], status="Completed").first()
+        if booking and booking.review is None:
+            db.session.add(Review(user=trekkers[trekker_idx], trek=booking.trek, booking=booking,
+                                  rating=rating, comment=comment))
+            created.append(f"review   {trekkers[trekker_idx].email} -> Kuari Pass ({rating}*)")
+
+    # 10. A few notifications matching the seeded bookings
+    for booking in seeded:
+        if booking.status == "Booked" and booking.payment_status != "Paid":
+            continue  # nothing to announce for an unpaid booking
+        title, message, kind, link = {
+            "Booked": ("Payment successful", f"Your booking for {booking.trek.name} is confirmed.", "payment", "/user/bookings"),
+            "Cancelled": ("Booking cancelled", f"Your booking for {booking.trek.name} was cancelled and refunded.", "booking", "/user/history"),
+            "Completed": (f"You completed {booking.trek.name}!", "Rate your trek and download your certificate from History.", "trek", "/user/history"),
+        }[booking.status]
+        if not Notification.query.filter_by(user_id=booking.user_id, title=title, message=message).first():
+            db.session.add(Notification(user_id=booking.user_id, title=title, message=message, type=kind, link=link))
+            created.append(f"notify   {booking.user.email}: {title}")
+
+    # 11. Default packing checklist for each difficulty
+    added = 0
+    for difficulty in TREK_DIFFICULTIES:
+        for item, category, needed_from, essential_from in CHECKLIST:
+            if LEVEL[difficulty] < LEVEL[needed_from]:
+                continue
+            if ChecklistItem.query.filter_by(difficulty=difficulty, trek_id=None, item=item).first():
+                continue
+            essential = essential_from is not None and LEVEL[difficulty] >= LEVEL[essential_from]
+            db.session.add(ChecklistItem(difficulty=difficulty, item=item, category=category, is_essential=essential))
+            added += 1
+    if added:
+        created.append(f"checklist {added} default items (Easy/Moderate/Hard)")
 
     db.session.commit()
     clear_trek_cache()  # data was written directly: drop anything cached

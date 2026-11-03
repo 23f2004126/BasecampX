@@ -14,3 +14,17 @@ def enqueue(task, *args, **kwargs):
     except Exception as error:  # kombu OperationalError, connection refused...
         current_app.logger.error("Could not queue %s: %s", task.name, error)
         abort(503, description="Background jobs are unavailable right now. Please try again in a minute.")
+
+
+def enqueue_quietly(task, *args, **kwargs):
+    """
+    Queue a "nice to have" job (e.g. an email) AFTER the main action has
+    already been saved. If the broker is down we log it and carry on: the
+    booking/payment itself must not fail just because an email can't be queued.
+    """
+    try:
+        return task.delay(*args, **kwargs)
+    except Exception as error:
+        current_app.logger.warning("Could not queue %s (%s); skipped.", task.name, error)
+        return None
+

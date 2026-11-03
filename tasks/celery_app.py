@@ -82,6 +82,10 @@ celery.conf.update(
             "task": "tasks.daily_reminder",
             "schedule": crontab(hour=18, minute=0),              # every day, 6:00 PM
         },
+        "auto-cancel-unpaid": {
+            "task": "tasks.auto_cancel_unpaid",
+            "schedule": crontab(minute="*/10"),                  # every 10 minutes
+        },
         "monthly-report": {
             "task": "tasks.monthly_report",
             "schedule": crontab(day_of_month=1, hour=9, minute=0),  # 1st of month, 9:00 AM

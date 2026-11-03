@@ -81,3 +81,5 @@ class Config:
     # Used to build links inside emails
     APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://127.0.0.1:5001")
     REMINDER_DAYS_AHEAD = 3
+    # Simulated payment gateway "processing" time (seconds)
+    PAYMENT_SIMULATION_SECONDS = float(os.environ.get("PAYMENT_SIMULATION_SECONDS", 1.0))

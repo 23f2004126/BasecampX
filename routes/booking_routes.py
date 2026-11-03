@@ -1,55 +1,30 @@
 """
 Booking API (role: user / trekker). Everything is under /api/bookings.
 
-POST /api/bookings              - book a seat on a trek
+POST /api/bookings              - hold a seat on a trek (pay within 30 minutes: POST /api/payments)
 PUT  /api/bookings/<id>/cancel  - cancel your own booking before the trek starts
 
 Bookings are never deleted: cancelling only changes the status, so the
 admin keeps a full history of payments, refunds and demand.
+Seat changes live in utils/bookings.py (shared with the Celery jobs).
 """
-from datetime import date, datetime, timezone
+from datetime import date
 
 from flask import Blueprint, abort, jsonify
 from flask_security import current_user
-from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
 from extensions import db
-from models import ROLE_USER, Booking, Trek
+from models import PAYMENT_WINDOW_MINUTES, ROLE_USER, Booking, Trek
+from tasks.tasks import send_booking_email
+from utils.bookings import cancel_booking, take_one_slot
 from utils.cache import clear_trek_cache
 from utils.decorators import role_required
+from utils.jobs import enqueue_quietly
+from utils.notify import notify
 from utils.validators import json_body, to_int, validation_error
 
 booking_bp = Blueprint("booking", __name__, url_prefix="/api/bookings")
-
-
-def take_one_slot(trek_id):
-    """
-    Atomically claim a seat:
-        UPDATE trek SET available_slots = available_slots - 1
-        WHERE id = :id AND status = 'Open' AND available_slots > 0
-    The check and the decrement are ONE statement, so two requests can't both
-    see "1 seat left" and both take it. The database runs the two UPDATEs one
-    after the other; the second finds available_slots = 0, matches no row and
-    rowcount is 0. Returns True if a seat was taken.
-    """
-    result = db.session.execute(
-        update(Trek)
-        .where(Trek.id == trek_id, Trek.status == "Open", Trek.available_slots > 0)
-        .values(available_slots=Trek.available_slots - 1)
-        .execution_options(synchronize_session=False)
-    )
-    return result.rowcount == 1
-
-
-def give_back_one_slot(trek_id):
-    """Atomic +1, never going above total_slots."""
-    db.session.execute(
-        update(Trek)
-        .where(Trek.id == trek_id, Trek.available_slots < Trek.total_slots)
-        .values(available_slots=Trek.available_slots + 1)
-        .execution_options(synchronize_session=False)
-    )
 
 
 @booking_bp.route("", methods=["POST"])
@@ -79,18 +54,16 @@ def create_booking():
     # 5. Claim a seat atomically - this is the real overbooking guard
     if not take_one_slot(trek.id):
         db.session.rollback()
-        abort(409, description="Sorry, this trek is fully booked.")
+        abort(409, description="Sorry, this trek is fully booked. You can join the waitlist.")
 
-    booking = Booking(
-        user_id=current_user.id,
-        trek_id=trek.id,
-        status="Booked",
-        payment_status="Pending",
-        amount=trek.price,
-    )
+    booking = Booking(user_id=current_user.id, trek_id=trek.id, status="Booked",
+                      payment_status="Pending", amount=trek.price)
     db.session.add(booking)
+    notify(current_user.id, "Seat held",
+           f"Your seat on {trek.name} is held. Complete payment within "
+           f"{PAYMENT_WINDOW_MINUTES} minutes to confirm it.", "booking", "/user/bookings")
     try:
-        # Seat decrement + new booking are committed together: both or neither.
+        # Seat decrement + booking + notification are committed together.
         db.session.commit()
     except IntegrityError:
         # The partial unique index caught a simultaneous duplicate booking.
@@ -98,11 +71,10 @@ def create_booking():
         db.session.rollback()
         abort(409, description="You already have an active booking for this trek.")
 
-    # Slots changed -> cached lists/details now show the wrong number. Drop them.
-    clear_trek_cache(trek.id)
+    clear_trek_cache(trek.id)  # slots changed
     db.session.refresh(trek)
     return jsonify({
-        "message": "Booking confirmed.",
+        "message": f"Seat held. Complete payment within {PAYMENT_WINDOW_MINUTES} minutes to confirm your booking.",
         "booking": booking.to_dict(),
         "available_slots": trek.available_slots,
     }), 201
@@ -110,7 +82,7 @@ def create_booking():
 
 @booking_bp.route("/<int:booking_id>/cancel", methods=["PUT"])
 @role_required(ROLE_USER)
-def cancel_booking(booking_id):
+def cancel(booking_id):
     booking = db.session.get(Booking, booking_id)
     # Someone else's booking looks exactly like a missing one (don't leak ids).
     if booking is None or booking.user_id != current_user.id:
@@ -122,17 +94,21 @@ def cancel_booking(booking_id):
     if trek.status in ("Ongoing", "Completed") or (trek.start_date and trek.start_date <= date.today()):
         abort(400, description="This trek has already started and can no longer be cancelled.")
 
-    booking.status = "Cancelled"
-    booking.cancelled_at = datetime.now(timezone.utc)
-    if booking.payment_status == "Paid":
-        booking.payment_status = "Refunded"
-    give_back_one_slot(trek.id)
-    db.session.commit()  # status change + seat returned in one transaction
+    # Status, refund record, seat back and waitlist promotion: one transaction.
+    cancelled, promoted = cancel_booking(booking, reason="")
+    if not cancelled:
+        db.session.rollback()
+        abort(409, description="This booking was already cancelled.")
+    db.session.commit()
     clear_trek_cache(trek.id)
+
+    enqueue_quietly(send_booking_email, booking.id, "cancelled")
+    for new_booking in promoted:
+        enqueue_quietly(send_booking_email, new_booking.id, "promoted")
 
     db.session.refresh(trek)
     return jsonify({
-        "message": "Booking cancelled.",
+        "message": "Booking cancelled." + (" Your refund has been issued." if booking.payment_status == "Refunded" else ""),
         "booking": booking.to_dict(),
         "available_slots": trek.available_slots,
     })

@@ -1,0 +1,46 @@
+{% extends "base_email.html" %}
+{% block content %}
+<p style="margin:0 0 6px;color:#4b5e54;">Hi {{ name }},</p>
+<h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#26372e;">
+  {{ heading }}{% if kind == 'cancelled' %}{{ reason }}.{% endif %}
+</h1>
+
+{% if kind == 'confirmed' %}
+<p style="margin:0 0 16px;">Your payment was received and your seat is confirmed. See you on the trail!</p>
+{% elif kind == 'promoted' %}
+<p style="margin:0 0 16px;padding:12px 14px;background:#fff4e8;border-left:4px solid #f28c28;border-radius:6px;">
+  You've been moved off the waitlist and a seat is being held for you.
+  <b>Complete payment within {{ window }} minutes</b> to keep it.
+</p>
+{% elif kind == 'cancelled' %}
+<p style="margin:0 0 16px;">
+  {% if refunded %}A refund of <b>{{ amount }}</b> has been issued to your original payment method.
+  {% else %}No payment was taken for this booking.{% endif %}
+</p>
+{% endif %}
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+       style="border:1px solid #dfe3d6;border-radius:12px;border-collapse:separate;">
+  {% set rows = [
+      ('Booking ID', '#' ~ booking.id),
+      ('Trek', trek.name),
+      ('Location', trek.location),
+      ('Dates', start_date ~ ' – ' ~ end_date),
+      ('Difficulty', trek.difficulty ~ ' · ' ~ trek.duration_days ~ ' days'),
+      ('Amount', amount)] %}
+  {% if transaction_ref and kind == 'confirmed' %}{% set rows = rows + [('Payment ref', transaction_ref)] %}{% endif %}
+  {% for label, value in rows %}
+  <tr>
+    <td style="padding:10px 14px;color:#4b5e54;width:38%;{% if not loop.last %}border-bottom:1px solid #eef0e8;{% endif %}">{{ label }}</td>
+    <td style="padding:10px 14px;font-weight:bold;{% if not loop.last %}border-bottom:1px solid #eef0e8;{% endif %}">{{ value }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<p style="margin:24px 0 0;">
+  <a href="{{ bookings_url }}"
+     style="display:inline-block;background:#f28c28;color:#16211b;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:999px;">
+    {% if kind == 'promoted' %}Pay now{% else %}View my bookings{% endif %}
+  </a>
+</p>
+{% endblock %}

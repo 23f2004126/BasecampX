@@ -7,6 +7,8 @@ Staff     : GET/POST /staff
 Users     : GET /users, PUT /users/<id>/blacklist, PUT /users/<id>/whitelist
 Bookings  : GET /bookings
 Jobs      : GET /reports/pdf, POST /jobs/daily-reminder, POST /jobs/monthly-report
+Checklist : POST /treks/<id>/checklist, DELETE /checklist/<item_id>
+(Review moderation lives in routes/review_routes.py under /api/admin/reviews.)
 """
 import re
 from datetime import date
@@ -18,17 +20,21 @@ from sqlalchemy import func, or_
 
 from extensions import db, security
 from models import (
-    BOOKING_STATUSES, ROLE_ADMIN, ROLE_STAFF, ROLE_USER, TREK_DIFFICULTIES,
-    TREK_STATUSES, Booking, Role, StaffProfile, Trek, User,
+    BOOKING_STATUSES, CHECKLIST_CATEGORIES, ROLE_ADMIN, ROLE_STAFF, ROLE_USER, TREK_DIFFICULTIES,
+    TREK_STATUSES, Booking, ChecklistItem, Review, Role, StaffProfile, Trek, User, Waitlist,
 )
+from tasks.tasks import (
+    daily_reminder, monthly_report, monthly_report_files, previous_month, send_booking_email, send_staff_welcome,
+)
+from utils.bookings import promote_from_waitlist
 from utils.cache import cached_json, clear_admin_cache, clear_trek_cache, ttl
-from tasks.tasks import daily_reminder, monthly_report, monthly_report_files, previous_month, send_staff_welcome
 from utils.decorators import role_required
-from utils.jobs import enqueue
+from utils.jobs import enqueue, enqueue_quietly
+from utils.notify import notify
 from utils.pdf import PdfError
 from utils.pagination import paginate
 from utils.validators import (
-    arg_choice, arg_int, arg_text, json_body, to_int, validate_staff,
+    arg_choice, arg_int, arg_text, json_body, match_choice, to_int, validate_staff,
     validate_trek, validation_error,
 )
 
@@ -135,9 +141,13 @@ def update_trek(trek_id):
 
     for field, value in data.items():
         setattr(trek, field, value)
+    # Extra capacity (or reopening) goes to the waitlist first, same transaction.
+    promoted = promote_from_waitlist(trek.id)
     db.session.commit()
     clear_trek_cache(trek.id)
-    return jsonify({"message": "Trek updated.", "trek": trek.to_dict()})
+    for booking in promoted:
+        enqueue_quietly(send_booking_email, booking.id, "promoted")
+    return jsonify({"message": "Trek updated.", "trek": trek.to_dict(), "promoted_from_waitlist": len(promoted)})
 
 
 @admin_bp.route("/treks/<int:trek_id>", methods=["DELETE"])
@@ -179,6 +189,9 @@ def assign_staff(trek_id):
             return validation_error({"staff_id": "This user is not a staff member."})
         if staff.is_blacklisted or not staff.active:
             return validation_error({"staff_id": "This staff member is blacklisted or inactive."})
+        if trek.staff_id != staff.id:
+            notify(staff.id, "New trek assigned", f"You are now leading {trek.name}.",
+                   "trek", f"/staff/treks/{trek.id}")
         trek.staff_id = staff.id
 
     db.session.commit()
@@ -213,7 +226,7 @@ def create_staff():
     db.session.commit()
     clear_admin_cache()  # total_staff changed
     # Email the new staff member their login details (in the background).
-    enqueue(send_staff_welcome, user.id, data["password"])
+    enqueue_quietly(send_staff_welcome, user.id, data["password"])
     return jsonify({"message": "Staff member created.", "staff": staff_to_dict(user)}), 201
 
 
@@ -354,6 +367,20 @@ def build_reports():
         .join(Booking).filter(not_cancelled).group_by(Trek.difficulty).all()
     )
 
+    # 5. Average rating per trek (visible reviews only), best first
+    ratings = (
+        db.session.query(Trek.name, func.avg(Review.rating))
+        .join(Review).filter(Review.is_hidden.is_(False))
+        .group_by(Trek.id).order_by(func.avg(Review.rating).desc()).limit(10).all()
+    )
+
+    # 6. Waitlist demand: people currently waiting, per trek
+    waiting = (
+        db.session.query(Trek.name, func.count(Waitlist.id))
+        .join(Waitlist).filter(Waitlist.status == "Waiting")
+        .group_by(Trek.id).order_by(func.count(Waitlist.id).desc()).limit(10).all()
+    )
+
     return {
         "bookings_per_trek": {"labels": [n for n, _ in top], "data": [c for _, c in top]},
         "bookings_per_month": {"labels": months, "data": list(per_month.values())},
@@ -361,6 +388,8 @@ def build_reports():
                             "data": [status_counts.get(s, 0) for s in TREK_STATUSES]},
         "users_by_difficulty": {"labels": list(TREK_DIFFICULTIES),
                                 "data": [difficulty_counts.get(d, 0) for d in TREK_DIFFICULTIES]},
+        "avg_rating_per_trek": {"labels": [n for n, _ in ratings], "data": [round(float(a), 1) for _, a in ratings]},
+        "waitlist_demand": {"labels": [n for n, _ in waiting], "data": [c for _, c in waiting]},
     }
 
 
@@ -409,3 +438,40 @@ def run_monthly_report():
     year, month = parse_month(json_body().get("month"))
     job = enqueue(monthly_report, f"{year:04d}-{month:02d}")
     return jsonify({"task_id": job.id, "message": f"Monthly report for {year:04d}-{month:02d} started."}), 202
+
+
+# ---------------------------------------------------------------------------
+# Packing checklist: trek-specific items (defaults per difficulty are seeded)
+# ---------------------------------------------------------------------------
+@admin_bp.route("/treks/<int:trek_id>/checklist", methods=["POST"])
+@role_required(ROLE_ADMIN)
+def add_checklist_item(trek_id):
+    trek = db.get_or_404(Trek, trek_id, description="Trek not found.")
+    data = json_body()
+    item = (data.get("item") or "").strip() if isinstance(data.get("item"), str) else ""
+    category = match_choice(data.get("category"), CHECKLIST_CATEGORIES)
+    errors = {}
+    if not 2 <= len(item) <= 150:
+        errors["item"] = "Item must be 2-150 characters."
+    if not category:
+        errors["category"] = f"Must be one of: {', '.join(CHECKLIST_CATEGORIES)}."
+    if errors:
+        return validation_error(errors)
+
+    entry = ChecklistItem(trek_id=trek.id, item=item, category=category,
+                          is_essential=bool(data.get("is_essential", False)))
+    db.session.add(entry)
+    db.session.commit()
+    return jsonify({"message": "Checklist item added.", "item": entry.to_dict()}), 201
+
+
+@admin_bp.route("/checklist/<int:item_id>", methods=["DELETE"])
+@role_required(ROLE_ADMIN)
+def delete_checklist_item(item_id):
+    entry = db.get_or_404(ChecklistItem, item_id, description="Checklist item not found.")
+    if entry.trek_id is None:
+        abort(400, description="Default items (per difficulty) can't be deleted here; only trek-specific ones.")
+    db.session.delete(entry)
+    db.session.commit()
+    return jsonify({"message": "Checklist item removed."})
+

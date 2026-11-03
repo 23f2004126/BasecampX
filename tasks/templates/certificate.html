@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Certificate {{ certificate_no }}</title>
+  <style>
+    /* Rendered by xhtml2pdf: plain CSS + tables, A4 landscape, one page. */
+    @page { size: a4 landscape; margin: 0.9cm; }
+    body { margin: 0; font-family: Helvetica, Arial, sans-serif; color: #26372e; }
+    .frame { border: 9px solid #26372e; padding: 5px; }
+    .inner { border: 2px solid #f28c28; padding: 40px 50px 30px; background-color: #fbfbf6; }
+    .brand { text-align: center; color: #4b5e54; font-size: 10pt; font-weight: bold; letter-spacing: 3px; }
+    .peaks { text-align: center; color: #f28c28; font-size: 24pt; line-height: 1; margin: 12px 0 8px; }
+    .title { text-align: center; font-size: 40pt; font-weight: bold; color: #26372e; margin: 2px 0 0; }
+    .subtitle { text-align: center; font-size: 12pt; color: #4b5e54; letter-spacing: 2px; margin: 10px 0 28px; }
+    .presented { text-align: center; font-size: 11pt; color: #4b5e54; margin: 0; }
+    .name { text-align: center; font-size: 36pt; font-weight: bold; color: #d97416; margin: 6px 0 12px; }
+    .rule { border-top: 1.5px solid #a0c3be; width: 60%; margin: 0 auto 18px; }
+    .statement { text-align: center; font-size: 14pt; line-height: 1.5; margin: 0 40px 34px; }
+    .trek { font-weight: bold; color: #26372e; }
+    table.facts { width: 100%; border-collapse: collapse; margin-bottom: 48px; }
+    table.facts td { width: 25%; text-align: center; padding: 12px 4px; background-color: #eef2ea; border: 3px solid #fbfbf6; }
+    .fact-label { font-size: 8.5pt; color: #4b5e54; letter-spacing: 1px; }
+    .fact-value { font-size: 13pt; font-weight: bold; color: #26372e; }
+    table.sign { width: 100%; border-collapse: collapse; }
+    table.sign td { width: 33%; vertical-align: bottom; font-size: 9.5pt; color: #4b5e54; }
+    .line { border-top: 1px solid #26372e; padding-top: 4px; }
+    .seal { text-align: center; }
+    .seal-box { border: 2px solid #f28c28; color: #d97416; font-weight: bold; font-size: 10pt; padding: 8px 10px; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <div class="inner">
+      <div class="brand">TREKKING MANAGEMENT APPLICATION</div>
+      <div class="peaks">&#9650;&#9650;&#9650;</div>
+      <div class="title">Certificate of Completion</div>
+      <div class="subtitle">THIS CERTIFIES THAT</div>
+
+      <div class="name">{{ trekker_name }}</div>
+      <div class="rule"></div>
+
+      <div class="statement">
+        has successfully completed the <span class="trek">{{ trek_name }}</span> trek in
+        <span class="trek">{{ location }}</span>, from {{ start_date }} to {{ end_date }}.
+      </div>
+
+      <table class="facts">
+        <tr>
+          <td><div class="fact-label">DIFFICULTY</div><div class="fact-value">{{ difficulty }}</div></td>
+          <td><div class="fact-label">DURATION</div><div class="fact-value">{{ duration }} days</div></td>
+          <td><div class="fact-label">TREK LEADER</div><div class="fact-value">{{ leader }}</div></td>
+          <td><div class="fact-label">CERTIFICATE NO.</div><div class="fact-value">{{ certificate_no }}</div></td>
+        </tr>
+      </table>
+
+      <table class="sign">
+        <tr>
+          <td><div class="line">Issued on {{ issue_date }}</div></td>
+          <td class="seal"><span class="seal-box">VERIFIED &middot; TMA</span></td>
+          <td style="text-align: right;"><div class="line">TMA Administration</div></td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

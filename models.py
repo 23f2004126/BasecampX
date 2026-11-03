@@ -7,13 +7,20 @@ role, user, roles_users   -> accounts and permissions (used by Flask-Security)
 staff_profile             -> extra details for staff users (one-to-one with user)
 trek                      -> treks that trekkers can book
 booking                   -> a trekker's booking for a trek
+payment                   -> payment attempts / refunds for a booking (simulated)
+waitlist                  -> queue of trekkers waiting for a full trek
+review                    -> rating + comment for a completed booking
+notification              -> in-app notifications for a user
+checklist_item            -> packing list items (per difficulty or per trek)
 
 Every model has a to_dict() method so routes can return it as JSON.
 Secrets (password hash, fs_uniquifier) are NEVER included in to_dict().
 """
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 
 from flask_security import RoleMixin, UserMixin
+from sqlalchemy import func
 
 from extensions import db
 
@@ -39,6 +46,15 @@ TREK_DIFFICULTIES = ("Easy", "Moderate", "Hard")
 TREK_STATUSES = ("Pending", "Approved", "Open", "Closed", "Ongoing", "Completed")
 BOOKING_STATUSES = ("Booked", "Cancelled", "Completed")
 PAYMENT_STATUSES = ("Pending", "Paid", "Refunded")
+
+PAYMENT_METHODS = ("UPI", "Card", "NetBanking")
+PAYMENT_RECORD_STATUSES = ("Success", "Failed", "Refunded")
+WAITLIST_STATUSES = ("Waiting", "Promoted", "Left")
+NOTIFICATION_TYPES = ("booking", "payment", "waitlist", "trek", "system")
+CHECKLIST_CATEGORIES = ("Documents", "Clothing", "Gear", "Health")
+
+# A new (or promoted) booking holds its seat this long while waiting for payment.
+PAYMENT_WINDOW_MINUTES = 30
 
 
 def _in_list(column, values):
@@ -172,8 +188,23 @@ class Trek(db.Model):
 
     staff = db.relationship("User", back_populates="assigned_treks")
     bookings = db.relationship("Booking", back_populates="trek")
+    reviews = db.relationship("Review", back_populates="trek")
+    # Waitlist entries and trek-specific checklist items belong to the trek
+    # and are deleted with it (bookings/reviews are history and block deletion).
+    waitlist = db.relationship("Waitlist", back_populates="trek", cascade="all, delete-orphan")
+    checklist_items = db.relationship("ChecklistItem", back_populates="trek", cascade="all, delete-orphan")
+
+    def rating_summary(self):
+        """(average rating rounded to 1 decimal or None, number of visible reviews)"""
+        avg, count = (
+            db.session.query(func.avg(Review.rating), func.count(Review.id))
+            .filter(Review.trek_id == self.id, Review.is_hidden.is_(False))
+            .one()
+        )
+        return (round(float(avg), 1) if avg is not None else None), count
 
     def to_dict(self):
+        avg_rating, review_count = self.rating_summary()
         return {
             "id": self.id,
             "name": self.name,
@@ -191,6 +222,8 @@ class Trek(db.Model):
             "image_url": self.image_url,
             "staff_id": self.staff_id,
             "staff_name": self.staff.full_name if self.staff else None,
+            "avg_rating": avg_rating,
+            "review_count": review_count,
             "created_at": iso(self.created_at),
         }
 
@@ -222,9 +255,20 @@ class Booking(db.Model):
     payment_status = db.Column(db.String(20), default="Pending", nullable=False)
     amount = db.Column(db.Float, nullable=False, default=0)
     cancelled_at = db.Column(db.DateTime, nullable=True)
+    # Issued the first time the completion certificate is downloaded (TMA-2026-000123)
+    certificate_no = db.Column(db.String(30), unique=True, nullable=True)
 
     user = db.relationship("User", back_populates="bookings")
     trek = db.relationship("Trek", back_populates="bookings")
+    payments = db.relationship("Payment", back_populates="booking", order_by="Payment.created_at")
+    review = db.relationship("Review", back_populates="booking", uselist=False)
+
+    @property
+    def payment_due_at(self):
+        """Deadline to pay for an unpaid active booking (None otherwise)."""
+        if self.status == "Booked" and self.payment_status == "Pending" and self.booking_date:
+            return self.booking_date + timedelta(minutes=PAYMENT_WINDOW_MINUTES)
+        return None
 
     def to_dict(self):
         return {
@@ -238,4 +282,173 @@ class Booking(db.Model):
             "payment_status": self.payment_status,
             "amount": self.amount,
             "cancelled_at": iso(self.cancelled_at),
+            "payment_due_at": iso(self.payment_due_at),
+            "certificate_no": self.certificate_no,
+            "reviewed": self.review is not None,
         }
+
+
+def _ref():
+    """Simulated payment reference, e.g. TMA-8F3A21C9."""
+    return "TMA-" + secrets.token_hex(4).upper()
+
+
+class Payment(db.Model):
+    """One row per payment attempt or refund (bookings can have several)."""
+
+    __tablename__ = "payment"
+    __table_args__ = (
+        _in_list("method", PAYMENT_METHODS),
+        _in_list("status", PAYMENT_RECORD_STATUSES),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    booking_id = db.Column(db.Integer, db.ForeignKey("booking.id"), nullable=False, index=True)
+    amount = db.Column(db.Float, nullable=False)
+    method = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(20), nullable=False)
+    transaction_ref = db.Column(db.String(20), unique=True, nullable=False, default=_ref)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    booking = db.relationship("Booking", back_populates="payments")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "booking_id": self.booking_id,
+            "amount": self.amount,
+            "method": self.method,
+            "status": self.status,
+            "transaction_ref": self.transaction_ref,
+            "created_at": iso(self.created_at),
+        }
+
+
+class Waitlist(db.Model):
+    """Trekkers queuing for a full trek. position is 1-based among 'Waiting' rows."""
+
+    __tablename__ = "waitlist"
+    __table_args__ = (
+        _in_list("status", WAITLIST_STATUSES),
+        # At most one *waiting* entry per user per trek (leaving and re-joining is fine).
+        db.Index("uq_one_waiting_entry", "user_id", "trek_id", unique=True,
+                 sqlite_where=db.text("status = 'Waiting'")),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    trek_id = db.Column(db.Integer, db.ForeignKey("trek.id"), nullable=False, index=True)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    status = db.Column(db.String(20), nullable=False, default="Waiting")
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    user = db.relationship("User")
+    trek = db.relationship("Trek", back_populates="waitlist")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "user_name": self.user.full_name if self.user else None,
+            "user_email": self.user.email if self.user else None,
+            "trek_id": self.trek_id,
+            "trek_name": self.trek.name if self.trek else None,
+            "trek_start_date": iso(self.trek.start_date) if self.trek else None,
+            "position": self.position if self.status == "Waiting" else None,
+            "status": self.status,
+            "created_at": iso(self.created_at),
+        }
+
+
+class Review(db.Model):
+    __tablename__ = "review"
+    __table_args__ = (
+        db.CheckConstraint("rating BETWEEN 1 AND 5", name="ck_rating_range"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    trek_id = db.Column(db.Integer, db.ForeignKey("trek.id"), nullable=False, index=True)
+    # unique: one review per booking (the DB enforces it even if two requests race)
+    booking_id = db.Column(db.Integer, db.ForeignKey("booking.id"), unique=True, nullable=False)
+    rating = db.Column(db.Integer, nullable=False)
+    comment = db.Column(db.String(500))
+    is_hidden = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    user = db.relationship("User")
+    trek = db.relationship("Trek", back_populates="reviews")
+    booking = db.relationship("Booking", back_populates="review")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "user_name": self.user.full_name if self.user else None,
+            "trek_id": self.trek_id,
+            "trek_name": self.trek.name if self.trek else None,
+            "booking_id": self.booking_id,
+            "rating": self.rating,
+            "comment": self.comment,
+            "is_hidden": self.is_hidden,
+            "created_at": iso(self.created_at),
+        }
+
+
+class Notification(db.Model):
+    __tablename__ = "notification"
+    __table_args__ = (
+        _in_list("type", NOTIFICATION_TYPES),
+        db.Index("ix_notification_user_unread", "user_id", "is_read"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    title = db.Column(db.String(120), nullable=False)
+    message = db.Column(db.String(500), nullable=False)
+    type = db.Column(db.String(20), nullable=False, default="system")
+    link = db.Column(db.String(255))  # front-end route, e.g. "/user/bookings"
+    is_read = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "message": self.message,
+            "type": self.type,
+            "link": self.link,
+            "is_read": self.is_read,
+            "created_at": iso(self.created_at),
+        }
+
+
+class ChecklistItem(db.Model):
+    """A default item for every trek of a difficulty, or an extra item for one trek."""
+
+    __tablename__ = "checklist_item"
+    __table_args__ = (
+        _in_list("category", CHECKLIST_CATEGORIES),
+        db.CheckConstraint("difficulty IS NOT NULL OR trek_id IS NOT NULL", name="ck_checklist_scope"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    difficulty = db.Column(db.String(20), nullable=True)
+    trek_id = db.Column(db.Integer, db.ForeignKey("trek.id"), nullable=True, index=True)
+    item = db.Column(db.String(150), nullable=False)
+    category = db.Column(db.String(20), nullable=False)
+    is_essential = db.Column(db.Boolean, default=False, nullable=False)
+
+    trek = db.relationship("Trek", back_populates="checklist_items")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "item": self.item,
+            "category": self.category,
+            "is_essential": self.is_essential,
+            "difficulty": self.difficulty,
+            "trek_id": self.trek_id,
+            "trek_specific": self.trek_id is not None,
+        }
+
