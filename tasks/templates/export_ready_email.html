@@ -1,0 +1,15 @@
+{% extends "base_email.html" %}
+{% block content %}
+<p style="margin:0 0 6px;color:#4b5e54;">Hi {{ name }},</p>
+<h1 style="margin:0 0 14px;font-size:22px;color:#26372e;">Your bookings export is ready</h1>
+<p style="margin:0 0 18px;">
+  The CSV with your {{ rows }} booking{{ '' if rows == 1 else 's' }} is attached to this email.
+  You can also download it again from your History page.
+</p>
+<p style="margin:0;">
+  <a href="{{ history_url }}"
+     style="display:inline-block;background:#26372e;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:999px;">
+    Open History
+  </a>
+</p>
+{% endblock %}

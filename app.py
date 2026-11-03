@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask, render_template, request
+from flask import Flask, abort, render_template, request
 from flask_security import SQLAlchemyUserDatastore
 from werkzeug.exceptions import HTTPException
 
@@ -37,6 +37,7 @@ def create_app():
     from routes.auth_routes import auth_bp
     from routes.booking_routes import booking_bp
     from routes.staff_routes import staff_bp
+    from routes.task_routes import task_bp
     from routes.trek_routes import trek_bp
     from routes.user_routes import user_bp
 
@@ -46,6 +47,14 @@ def create_app():
     app.register_blueprint(staff_bp)
     app.register_blueprint(trek_bp)
     app.register_blueprint(user_bp)
+    app.register_blueprint(task_bp)
+
+    @app.before_request
+    def protect_exports():
+        # CSV exports live in static/exports/ but must only be downloaded
+        # through /api/exports/<file>, which checks who is asking.
+        if request.path.startswith("/static/exports/"):
+            abort(404)
 
     register_api_error_handlers(app)
 

@@ -1,8 +1,18 @@
 import os
 
+from dotenv import load_dotenv
+
 # Absolute path of the project folder (the folder that contains this file)
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
+
+# Values in a .env file (see .env.example) become environment variables.
+# Real environment variables win over the file.
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+
+def env_bool(name, default=False):
+    return os.environ.get(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
 
 
 class Config:
@@ -49,13 +59,25 @@ class Config:
     CACHE_TTL_LOCATIONS = 30 * 60
     CACHE_TTL_ADMIN = 2 * 60
 
-    # ---------- Mail (MailHog) ----------
-    MAIL_SERVER = "localhost"
-    MAIL_PORT = 1025
-    MAIL_USE_TLS = False
-    MAIL_USE_SSL = False
-    MAIL_DEFAULT_SENDER = "noreply@tma.local"
+    # ---------- Mail (MailHog locally; real SMTP by setting these in .env) ----------
+    MAIL_SERVER = os.environ.get("MAIL_SERVER", "localhost")
+    MAIL_PORT = int(os.environ.get("MAIL_PORT", 1025))
+    MAIL_USE_TLS = env_bool("MAIL_USE_TLS")
+    MAIL_USE_SSL = env_bool("MAIL_USE_SSL")
+    MAIL_USERNAME = os.environ.get("MAIL_USERNAME")
+    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
+    MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER", "TMA <noreply@tma.local>")
 
-    # ---------- Celery (values only, Celery is set up elsewhere) ----------
-    CELERY_BROKER_URL = "redis://localhost:6379/1"
-    CELERY_RESULT_BACKEND = "redis://localhost:6379/2"
+    # ---------- Celery (background jobs: tasks/celery_app.py) ----------
+    CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/1")
+    CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/2")
+    CELERY_TIMEZONE = "Asia/Kolkata"
+
+    # ---------- Jobs ----------
+    # Where CSV exports are written (served only through /api/exports/<file>)
+    EXPORT_DIR = os.path.join(BASE_DIR, "static", "exports")
+    # Optional: Google Chat incoming-webhook URL for daily reminders
+    GCHAT_WEBHOOK_URL = os.environ.get("GCHAT_WEBHOOK_URL", "")
+    # Used to build links inside emails
+    APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://127.0.0.1:5001")
+    REMINDER_DAYS_AHEAD = 3

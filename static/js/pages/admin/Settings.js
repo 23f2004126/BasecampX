@@ -2,7 +2,6 @@
  * Admin > Settings (sidebar item from wireframe screens 3-7).
  * - Account: the admin's details from GET /api/me
  * - Preferences: saved in this browser (store.js prefs)
- * - About: how the system is configured
  */
 import Loader from '../../components/Loader.js';
 import { toast } from '../../components/Toast.js';
@@ -36,8 +35,7 @@ export default {
   },
   template: `
     <section>
-      <h1 class="page-title">Settings</h1>
-      <p class="page-subtitle">Your account and how the admin panel behaves in this browser.</p>
+      <h1 class="page-title mb-4">Settings</h1>
 
       <div class="row g-4">
         <div class="col-lg-6 stagger" style="--i: 0">
@@ -67,18 +65,6 @@ export default {
               <option v-for="n in perPageOptions" :key="n" :value="n">{{ n }} rows</option>
             </select>
             <p class="form-text mb-0">Saved in this browser only.</p>
-          </div>
-        </div>
-
-        <div class="col-12 stagger" style="--i: 2">
-          <div class="panel">
-            <h2 class="panel__title"><i class="bi bi-info-circle me-2 text-moss" aria-hidden="true"></i>About the system</h2>
-            <dl class="detail-list detail-list--wide">
-              <div><dt>Login sessions</dt><dd>Expire after 24 hours, or when the user logs out.</dd></div>
-              <div><dt>Who can register</dt><dd>Only Users (Trekkers). Trekking Staff are created by Admin.</dd></div>
-              <div><dt>Blacklisting</dt><dd>Blacklisted users and staff cannot login or use the system.</dd></div>
-              <div><dt>Admin account</dt><dd>Created by <code>create_initial_data.py</code> from <code>ADMIN_EMAIL</code> / <code>ADMIN_PASSWORD</code>.</dd></div>
-            </dl>
           </div>
         </div>
       </div>

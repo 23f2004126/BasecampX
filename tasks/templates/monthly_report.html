@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>TMA Monthly Report – {{ month_label }}</title>
+  <style>
+    /* Plain CSS + tables only: this same file is the email body AND the PDF
+       (xhtml2pdf has no flexbox/grid/CSS variables). */
+    @page { size: A4; margin: 1.6cm 1.4cm; }
+    body { margin: 0; font-family: Helvetica, Arial, sans-serif; font-size: 11pt; color: #26372e; background: #ffffff; }
+    .header { background-color: #26372e; color: #e7e9db; padding: 18px 22px; }
+    .brand { color: #f28c28; font-size: 10pt; font-weight: bold; letter-spacing: 1px; }
+    .title { font-size: 22pt; font-weight: bold; color: #ffffff; margin: 4px 0 2px; }
+    .meta { font-size: 9.5pt; color: #a0c3be; }
+    .stats { width: 100%; margin: 18px 0 6px; border-collapse: separate; border-spacing: 8px 0; }
+    .stat { background-color: #f4f5ee; border-top: 4px solid #f28c28; padding: 12px 10px; text-align: center; width: 25%; }
+    .stat-value { font-size: 22pt; font-weight: bold; color: #26372e; }
+    .stat-label { font-size: 9pt; color: #4b5e54; }
+    h2 { font-size: 13pt; color: #26372e; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #a0c3be; }
+    table.data { width: 100%; border-collapse: collapse; font-size: 10pt; }
+    table.data th { background-color: #4b5e54; color: #ffffff; text-align: left; padding: 7px 8px; font-size: 9pt; }
+    table.data td { padding: 7px 8px; border-bottom: 1px solid #e4e7dc; }
+    table.data tr.alt td { background-color: #f8f9f4; }
+    .num { text-align: right; }
+    .rank { color: #d97416; font-weight: bold; }
+    .empty { color: #4b5e54; font-style: italic; padding: 10px 0; }
+    .footer { margin-top: 26px; font-size: 8.5pt; color: #4b5e54; border-top: 1px solid #e4e7dc; padding-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">TREKKING MANAGEMENT APPLICATION</div>
+    <div class="title">Monthly Report &middot; {{ month_label }}</div>
+    <div class="meta">{{ period_start }} – {{ period_end }} &nbsp;|&nbsp; Generated {{ generated_at }}</div>
+  </div>
+
+  <table class="stats">
+    <tr>
+      <td class="stat"><div class="stat-value">{{ summary.treks_conducted }}</div><div class="stat-label">Treks conducted</div></td>
+      <td class="stat"><div class="stat-value">{{ summary.total_bookings }}</div><div class="stat-label">Total bookings</div></td>
+      <td class="stat"><div class="stat-value">{{ summary.cancellations }}</div><div class="stat-label">Cancellations</div></td>
+      <td class="stat"><div class="stat-value">{{ summary.unique_trekkers }}</div><div class="stat-label">Trekkers who participated</div></td>
+    </tr>
+  </table>
+
+  <h2>Treks conducted</h2>
+  {% if conducted %}
+  <table class="data">
+    <tr><th width="24%">Trek</th><th width="16%">Location</th><th width="28%">Dates</th><th width="18%">Trek leader</th><th width="14%" class="num">Participants</th></tr>
+    {% for t in conducted %}
+    <tr class="{{ 'alt' if loop.index is even }}">
+      <td><b>{{ t.name }}</b></td><td>{{ t.location }}</td><td>{{ t.dates }}</td>
+      <td>{{ t.staff }}</td><td class="num">{{ t.participants }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="empty">No treks were completed this month.</div>
+  {% endif %}
+
+  <h2>Top 5 popular treks</h2>
+  {% if top_treks %}
+  <table class="data">
+    <tr><th width="8%">#</th><th width="46%">Trek</th><th width="30%">Location</th><th width="16%" class="num">Bookings</th></tr>
+    {% for t in top_treks %}
+    <tr class="{{ 'alt' if loop.index is even }}">
+      <td class="rank">{{ loop.index }}</td><td><b>{{ t.name }}</b></td><td>{{ t.location }}</td><td class="num">{{ t.bookings }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="empty">No bookings were made this month.</div>
+  {% endif %}
+
+  <h2>Bookings per staff member</h2>
+  {% if staff %}
+  <table class="data">
+    <tr><th width="30%">Staff member</th><th width="34%">Email</th><th width="14%" class="num">Treks led</th><th width="22%" class="num">Bookings this month</th></tr>
+    {% for s in staff %}
+    <tr class="{{ 'alt' if loop.index is even }}">
+      <td><b>{{ s.name }}</b></td><td>{{ s.email }}</td><td class="num">{{ s.treks }}</td><td class="num">{{ s.bookings }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="empty">No staff members yet.</div>
+  {% endif %}
+
+  <div class="footer">TMA monthly report for {{ month_label }}. Cancelled bookings are not counted in "Top 5" or staff bookings.</div>
+</body>
+</html>

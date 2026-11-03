@@ -5,6 +5,8 @@
  *     import { toast } from '../components/Toast.js';
  *     toast.success('Booking confirmed!');
  *     toast.error('Something went wrong', { title: 'Payment failed' });
+ *     toast.success('Export ready', { action: { label: 'Download', onClick: fn }, timeout: 0 });
+ *       (timeout: 0 keeps the toast until it is dismissed or its action is used)
  * and inside templates/options API: this.$toast.info('...')  (registered in app.js)
  *
  * The <ToastHost /> component (default export) is mounted once in app.js and
@@ -26,9 +28,9 @@ export function dismiss(id) {
   if (index !== -1) state.items.splice(index, 1);
 }
 
-function show(type, message, { title = '', timeout = 4000 } = {}) {
+function show(type, message, { title = '', timeout = 4000, action = null } = {}) {
   const id = nextId++;
-  state.items.push({ id, type, message, title });
+  state.items.push({ id, type, message, title, action });
   if (state.items.length > 4) state.items.shift(); // never bury the screen
   if (timeout) setTimeout(() => dismiss(id), timeout);
   return id;
@@ -46,7 +48,13 @@ export default {
   data() {
     return { state, icons: ICONS };
   },
-  methods: { dismiss },
+  methods: {
+    dismiss,
+    runAction(t) {
+      dismiss(t.id);
+      t.action.onClick();
+    },
+  },
   template: `
     <div class="toast-stack" aria-live="polite" aria-relevant="additions">
       <TransitionGroup name="toast">
@@ -61,6 +69,9 @@ export default {
           <div class="tma-toast__body">
             <strong v-if="t.title" class="tma-toast__title">{{ t.title }}</strong>
             <span>{{ t.message }}</span>
+            <button v-if="t.action" type="button" class="btn btn-sm btn-primary tma-toast__action" @click="runAction(t)">
+              <i v-if="t.action.icon" class="bi me-1" :class="t.action.icon" aria-hidden="true"></i>{{ t.action.label }}
+            </button>
           </div>
           <button type="button" class="tma-toast__close" aria-label="Dismiss notification" @click="dismiss(t.id)">
             <i class="bi bi-x-lg" aria-hidden="true"></i>

@@ -546,7 +546,7 @@
 
 /* ---------------------------------------------------------------------------
    Wireframe additions (screens 1-2): app title, "Roles" label, field icons,
-   Remember me, note box
+   Remember me
    --------------------------------------------------------------------------- */
 .glass-card__brand {
   display: flex;
@@ -602,18 +602,3 @@
   border-color: rgba(75, 94, 84, 0.45);
 }
 
-.glass-note {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  margin-top: 1rem;
-  padding: 10px 12px;
-  border: 1px solid rgba(76, 160, 180, 0.35);
-  border-radius: var(--radius-sm);
-  background: rgba(76, 160, 180, 0.1);
-  color: var(--forest);
-  font-size: 0.82rem;
-  line-height: 1.4;
-}
-
-.glass-note i { color: var(--sky); margin-top: 1px; }

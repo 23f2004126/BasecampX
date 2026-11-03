@@ -12,9 +12,9 @@ import { addRipple, canHover, confettiBurst, typewriter } from '../utils/motion.
 const TITLE = 'Welcome Back!'; // wireframe screen 1
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+// The one hint on the login screen (only shown when Trekking Staff is picked)
 const ROLE_NOTES = {
-  admin: 'Admin access is limited to the TMA administrator.',
-  staff: 'Trek staff accounts are created by the admin.',
+  staff: 'Staff accounts are created by the admin.',
 };
 
 export default {
@@ -197,20 +197,14 @@ export default {
         </button>
       </form>
 
-      <div class="glass-card__footer field-in" style="--i: 4">
+      <div v-if="role === 'user' || roleNote" class="glass-card__footer field-in" style="--i: 4">
         <p v-if="role === 'user'" class="mb-0">
           Don't have an account?<br>
           <router-link to="/register" class="fw-semibold">Register as User (Trekker)</router-link>
         </p>
-        <p v-else class="mb-0 text-moss small">
+        <p v-else-if="roleNote" class="mb-0 text-moss small">
           <i class="bi bi-info-circle me-1" aria-hidden="true"></i>{{ roleNote }}
         </p>
-      </div>
-
-      <div class="glass-note field-in" style="--i: 5">
-        <i class="bi bi-info-circle" aria-hidden="true"></i>
-        <span><strong>Note:</strong> Only Users (Trekkers) can register themselves.
-        Trekking Staff are created by Admin.</span>
       </div>
     </section>
   `,

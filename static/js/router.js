@@ -18,6 +18,8 @@ import AppLayout from './components/AppLayout.js';
 import EmptyState from './components/EmptyState.js';
 import AdminSettings from './pages/admin/Settings.js';
 import StaffParticipants from './pages/staff/Participants.js';
+import AdminReports from './pages/admin/Reports.js';
+import UserHistory from './pages/user/History.js';
 import { auth, dashboardPath, isLoggedIn } from './store.js';
 
 /**
@@ -58,7 +60,7 @@ const routes = [
       page('users', 'Users (Trekkers)', 2),
       page('bookings', 'All Bookings', 2),
       page('search', 'Search', 2),
-      page('reports', 'Reports', 2),
+      page('reports', 'Reports', 2, AdminReports),
       page('settings', 'Settings', 2, AdminSettings),
     ],
   },
@@ -83,7 +85,7 @@ const routes = [
       page('treks', 'Browse Treks', 4),
       page('treks/:id(\\d+)', 'Trek Details', 4),
       page('bookings', 'My Bookings', 4),
-      page('history', 'Trekking History', 4),
+      page('history', 'Trekking History', 4, UserHistory),
       page('profile', 'Profile', 4),
     ],
   },

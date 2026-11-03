@@ -6,10 +6,13 @@ Treks     : GET/POST /treks, PUT/DELETE /treks/<id>, PUT /treks/<id>/assign
 Staff     : GET/POST /staff
 Users     : GET /users, PUT /users/<id>/blacklist, PUT /users/<id>/whitelist
 Bookings  : GET /bookings
+Jobs      : GET /reports/pdf, POST /jobs/daily-reminder, POST /jobs/monthly-report
 """
+import re
 from datetime import date
+from io import BytesIO
 
-from flask import Blueprint, abort, jsonify
+from flask import Blueprint, abort, jsonify, request, send_file
 from flask_security import hash_password
 from sqlalchemy import func, or_
 
@@ -19,7 +22,10 @@ from models import (
     TREK_STATUSES, Booking, Role, StaffProfile, Trek, User,
 )
 from utils.cache import cached_json, clear_admin_cache, clear_trek_cache, ttl
+from tasks.tasks import daily_reminder, monthly_report, monthly_report_files, previous_month, send_staff_welcome
 from utils.decorators import role_required
+from utils.jobs import enqueue
+from utils.pdf import PdfError
 from utils.pagination import paginate
 from utils.validators import (
     arg_choice, arg_int, arg_text, json_body, to_int, validate_staff,
@@ -206,6 +212,8 @@ def create_staff():
     )
     db.session.commit()
     clear_admin_cache()  # total_staff changed
+    # Email the new staff member their login details (in the background).
+    enqueue(send_staff_welcome, user.id, data["password"])
     return jsonify({"message": "Staff member created.", "staff": staff_to_dict(user)}), 201
 
 
@@ -354,3 +362,50 @@ def build_reports():
         "users_by_difficulty": {"labels": list(TREK_DIFFICULTIES),
                                 "data": [difficulty_counts.get(d, 0) for d in TREK_DIFFICULTIES]},
     }
+
+
+# ---------------------------------------------------------------------------
+# Monthly report PDF + manual job triggers (for demos)
+# ---------------------------------------------------------------------------
+MONTH_RE = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
+
+
+def parse_month(value):
+    """'YYYY-MM' -> (year, month); empty -> previous month; bad/future -> 400."""
+    if not value:
+        return previous_month()
+    match = MONTH_RE.match(value.strip())
+    if not match:
+        abort(400, description="'month' must look like YYYY-MM, e.g. 2026-10.")
+    year, month = int(match.group(1)), int(match.group(2))
+    if (year, month) > (date.today().year, date.today().month):
+        abort(400, description="That month hasn't happened yet.")
+    return year, month
+
+
+@admin_bp.route("/reports/pdf", methods=["GET"])
+@role_required(ROLE_ADMIN)
+def report_pdf():
+    """The monthly report as a PDF download, generated on demand."""
+    year, month = parse_month(request.args.get("month"))
+    try:
+        data, _html, pdf = monthly_report_files(year, month)
+    except PdfError as error:
+        abort(500, description=str(error))
+    return send_file(BytesIO(pdf), mimetype="application/pdf", as_attachment=True,
+                     download_name=f"tma-report-{data['month_key']}.pdf")
+
+
+@admin_bp.route("/jobs/daily-reminder", methods=["POST"])
+@role_required(ROLE_ADMIN)
+def run_daily_reminder():
+    job = enqueue(daily_reminder)
+    return jsonify({"task_id": job.id, "message": "Daily reminder job started."}), 202
+
+
+@admin_bp.route("/jobs/monthly-report", methods=["POST"])
+@role_required(ROLE_ADMIN)
+def run_monthly_report():
+    year, month = parse_month(json_body().get("month"))
+    job = enqueue(monthly_report, f"{year:04d}-{month:02d}")
+    return jsonify({"task_id": job.id, "message": f"Monthly report for {year:04d}-{month:02d} started."}), 202

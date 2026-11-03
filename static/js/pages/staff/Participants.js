@@ -55,10 +55,7 @@ export default {
   template: `
     <section>
       <div class="page-head">
-        <div>
-          <h1 class="page-title">Participants ({{ filtered.length }})</h1>
-          <p class="page-subtitle mb-0">Trekkers booked on the treks you lead.</p>
-        </div>
+        <h1 class="page-title mb-0">Participants ({{ filtered.length }})</h1>
       </div>
 
       <Loader v-if="loading" label="Gathering your participants…" />

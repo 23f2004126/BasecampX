@@ -270,12 +270,6 @@ export default {
                   <router-link to="/login" class="fw-semibold">Login here</router-link>
                 </p>
               </div>
-
-              <div class="glass-note field-in" style="--i: 7">
-                <i class="bi bi-info-circle" aria-hidden="true"></i>
-                <span><strong>Note:</strong> Only Users (Trekkers) can register themselves.
-                Trekking Staff are created by Admin.</span>
-              </div>
             </section>
           </TiltCard>
         </div>

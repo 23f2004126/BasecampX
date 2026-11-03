@@ -1,7 +1,7 @@
 """
 Trekker API (role: user). Everything is under /api/user.
 
-GET /dashboard, GET /bookings, GET /history, GET+PUT /profile
+GET /dashboard, GET /bookings, GET /history, GET+PUT /profile, POST /export
 """
 from datetime import date
 
@@ -11,7 +11,9 @@ from flask_security import current_user, hash_password, verify_password
 from extensions import db, security
 from models import BOOKING_STATUSES, ROLE_USER, Booking, Trek
 from utils.cache import clear_admin_cache
+from tasks.tasks import export_bookings_csv
 from utils.decorators import role_required
+from utils.jobs import enqueue
 from utils.pagination import paginate
 from utils.validators import arg_choice, json_body, validate_profile_update, validation_error
 
@@ -64,6 +66,14 @@ def bookings():
 def history():
     query = my_bookings().filter(Booking.status.in_(("Completed", "Cancelled")))
     return jsonify(paginate(query.order_by(Booking.booking_date.desc()), booking_with_trek))
+
+
+@user_bp.route("/export", methods=["POST"])
+@role_required(ROLE_USER)
+def export_bookings():
+    """Start the CSV export in the background; poll GET /api/tasks/<task_id>."""
+    job = enqueue(export_bookings_csv, current_user.id)
+    return jsonify({"task_id": job.id, "message": "Export started."}), 202
 
 
 @user_bp.route("/profile", methods=["GET"])

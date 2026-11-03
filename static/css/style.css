@@ -874,19 +874,6 @@ body.no-scroll {
   font-size: 1.15rem;
 }
 
-.info-note {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 12px 16px;
-  border: 1px solid rgba(76, 160, 180, 0.3);
-  border-radius: var(--radius);
-  background: rgba(76, 160, 180, 0.08);
-  color: var(--forest);
-  font-size: 0.9rem;
-}
-
-.info-note i { color: var(--sky); }
 
 /* Tables in theme colours */
 .table-theme {
@@ -1060,3 +1047,51 @@ body.no-scroll {
   pointer-events: none;
 }
 .input-icon > .form-control { padding-left: 2.5rem; }
+
+/* ---- Pagination (components/Pagination.js) ---- */
+.pager { display: inline-flex; gap: 6px; }
+.pager__btn {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid rgba(75, 94, 84, 0.2);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--forest);
+  font-weight: 600;
+}
+.pager__btn:hover:not(:disabled) { border-color: var(--forest); }
+.pager__btn.is-current { border-color: var(--forest); background: var(--forest); color: #fff; }
+.pager__btn:disabled { opacity: 0.4; }
+
+/* ---- Toast action button ---- */
+.tma-toast__action { align-self: flex-start; margin-top: 8px; }
+
+/* ---- Charts (components/ChartCard.js) ---- */
+.chart-card { display: flex; flex-direction: column; }
+.chart-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 1rem;
+}
+.chart-card__toggle { padding: 2px 12px; }
+.chart-card__canvas { position: relative; height: 260px; }
+.chart-card__canvas--doughnut { height: 300px; }
+.chart-card__empty { margin: auto 0; padding: 40px 0; color: var(--moss); text-align: center; }
+.chart-card__swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: 0;
+}
+
+/* ---- Reports header: month + PDF button ---- */
+.report-export { display: flex; flex-wrap: wrap; gap: 8px; }
+.report-export .form-control { width: auto; min-width: 160px; }
+@media (max-width: 575.98px) {
+  .report-export, .report-export .form-control, .report-export .btn { width: 100%; }
+}

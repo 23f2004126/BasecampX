@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ subject }}</title>
+</head>
+<body style="margin:0;padding:0;background:#e7e9db;font-family:Arial,Helvetica,sans-serif;color:#26372e;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#e7e9db;">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+               style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;">
+          <tr>
+            <td style="background:#26372e;padding:20px 28px;">
+              <span style="display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;background:#f28c28;color:#16211b;border-radius:8px;font-weight:bold;">&#9650;</span>
+              <span style="font-size:17px;font-weight:bold;color:#e7e9db;vertical-align:middle;margin-left:8px;">Trekking Management Application</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px;font-size:15px;line-height:1.55;">
+              {% block content %}{% endblock %}
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#f4f5ee;padding:14px 28px;font-size:12px;color:#4b5e54;">
+              TMA &middot; Trekking Management Application
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

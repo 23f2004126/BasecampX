@@ -57,6 +57,32 @@ export async function logout() {
   clearAuth();
 }
 
+/**
+ * Download a file from a protected endpoint (needs the auth header, so a plain
+ * <a href> can't be used): fetch it as a blob, then save it via a temporary link.
+ */
+export async function download(path, fallbackName = 'download') {
+  const response = await fetch(`/api${path}`, { headers: { 'Authentication-Token': auth.token || '' } });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      clearAuth();
+      window.location.hash = '#/login';
+    }
+    throw new ApiError(data.message || `Download failed (${response.status}).`, response.status);
+  }
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+  const filename = match ? decodeURIComponent(match[1]) : fallbackName;
+
+  const url = URL.createObjectURL(await response.blob());
+  const link = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export const get = (path) => api(path);
 export const post = (path, body, options = {}) => api(path, { method: 'POST', body, ...options });
 export const put = (path, body, options = {}) => api(path, { method: 'PUT', body, ...options });
