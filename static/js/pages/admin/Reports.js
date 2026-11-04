@@ -103,6 +103,14 @@ export default {
           <ChartCard title="Bookings by difficulty" kind="bar" value-label="Trekkers"
                      :labels="report.users_by_difficulty.labels" :values="report.users_by_difficulty.data" />
         </div>
+        <div class="col-lg-6 stagger" style="--i: 4">
+          <ChartCard title="Average rating per trek" kind="hbar" value-label="Avg rating"
+                     :labels="report.avg_rating_per_trek.labels" :values="report.avg_rating_per_trek.data" />
+        </div>
+        <div class="col-lg-6 stagger" style="--i: 5">
+          <ChartCard title="Waitlist demand" kind="hbar" value-label="People waiting"
+                     :labels="report.waitlist_demand.labels" :values="report.waitlist_demand.data" />
+        </div>
       </div>
     </section>
   `,

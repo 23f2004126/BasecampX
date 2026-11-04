@@ -2,24 +2,24 @@
 Trekker API (role: user). Everything is under /api/user.
 
 GET /dashboard, GET /bookings, GET /history, GET+PUT /profile, POST /export,
-GET /bookings/<id>/certificate (PDF)
+GET /bookings/<id> (one booking, for checkout), GET /bookings/<id>/certificate (PDF)
 """
 from datetime import date
 from io import BytesIO
 
 from flask import Blueprint, abort, jsonify, send_file
-from flask_security import current_user, hash_password, verify_password
+from flask_security import current_user
 
-from extensions import db, security
+from extensions import db
 from models import BOOKING_STATUSES, ROLE_USER, Booking, Trek
 from tasks.mailer import render
 from tasks.tasks import export_bookings_csv
-from utils.cache import clear_admin_cache
 from utils.decorators import role_required
 from utils.jobs import enqueue
 from utils.pagination import paginate
 from utils.pdf import PdfError, html_to_pdf
-from utils.validators import arg_choice, json_body, validate_profile_update, validation_error
+from utils.profile import update_profile
+from utils.validators import arg_choice
 
 user_bp = Blueprint("user", __name__, url_prefix="/api/user")
 
@@ -65,6 +65,18 @@ def bookings():
     return jsonify(paginate(query.order_by(Booking.booking_date.desc()), booking_with_trek))
 
 
+@user_bp.route("/bookings/<int:booking_id>", methods=["GET"])
+@role_required(ROLE_USER)
+def booking_detail(booking_id):
+    """One of my bookings with its trek and payment attempts (used by Checkout)."""
+    booking = db.session.get(Booking, booking_id)
+    if booking is None or booking.user_id != current_user.id:
+        abort(404, description="Booking not found.")
+    data = booking_with_trek(booking)
+    data["payments"] = [p.to_dict() for p in booking.payments]
+    return jsonify(data)
+
+
 @user_bp.route("/history", methods=["GET"])
 @role_required(ROLE_USER)
 def history():
@@ -88,31 +100,8 @@ def get_profile():
 
 @user_bp.route("/profile", methods=["PUT"])
 @role_required(ROLE_USER)
-def update_profile():
-    data, errors = validate_profile_update(json_body())
-    if not errors and "new_password" in data:
-        if not verify_password(data["current_password"], current_user.password):
-            errors["current_password"] = "Current password is incorrect."
-    if errors:
-        return validation_error(errors)
-
-    for field in ("full_name", "contact_number"):
-        if field in data:
-            setattr(current_user, field, data[field])
-
-    response = {"message": "Profile updated."}
-    if "new_password" in data:
-        current_user.password = hash_password(data["new_password"])
-        # Log out every other device that still holds an old token...
-        security.datastore.set_uniquifier(current_user)
-        # ...and give this device a fresh one so it stays logged in.
-        response["token"] = current_user.get_auth_token()
-
-    db.session.commit()
-    if "full_name" in data:
-        clear_admin_cache()  # recent bookings on the admin dashboard show this name
-    response["user"] = current_user.to_dict()
-    return jsonify(response)
+def update_my_profile():
+    return update_profile(current_user)
 
 
 # ---------------------------------------------------------------------------

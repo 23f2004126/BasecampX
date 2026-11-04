@@ -5,12 +5,14 @@
 import { createApp } from 'vue';
 import router from './router.js';
 import ToastHost, { toast } from './components/Toast.js';
+import ConfirmHost from './components/ConfirmDialog.js';
 
 const App = {
-  components: { ToastHost },
+  components: { ToastHost, ConfirmHost },
   template: `
     <router-view />
     <ToastHost />
+    <ConfirmHost />
   `,
 };
 

@@ -31,8 +31,14 @@ def utcnow():
 
 
 def iso(value):
-    """Turn a date/datetime into an ISO string for JSON (or None)."""
-    return value.isoformat() if value else None
+    """Turn a date/datetime into an ISO string for JSON (or None).
+    Datetimes are stored in UTC without a timezone (SQLite), so mark them with
+    'Z'; otherwise browsers would read them as local time (5.5 h off in India)."""
+    if not value:
+        return None
+    if isinstance(value, datetime) and value.tzinfo is None:
+        return value.isoformat() + "Z"
+    return value.isoformat()
 
 
 # ---------------------------------------------------------------------------

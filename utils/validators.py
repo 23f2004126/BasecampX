@@ -162,8 +162,9 @@ def validate_staff(data):
     return cleaned, errors
 
 
-def validate_profile_update(data):
-    """Only the fields that were sent are validated and returned."""
+def validate_profile_update(data, staff=False):
+    """Only the fields that were sent are validated and returned.
+    staff=True also accepts the StaffProfile fields."""
     cleaned, errors = {}, {}
 
     if "full_name" in data:
@@ -186,6 +187,17 @@ def validate_profile_update(data):
             errors["current_password"] = "Your current password is required to set a new one."
         cleaned["new_password"] = new_password
         cleaned["current_password"] = data.get("current_password")
+
+    if staff and "experience_years" in data:
+        experience = to_int(data.get("experience_years"), minimum=0)
+        if experience is None or experience > 60:
+            errors["experience_years"] = "Experience must be a whole number from 0 to 60."
+        cleaned["experience_years"] = experience
+    if staff and "specialization" in data:
+        specialization = _text(data, "specialization")
+        if len(specialization) > 120:
+            errors["specialization"] = "Keep it under 120 characters."
+        cleaned["specialization"] = specialization or None
 
     if not cleaned and not errors:
         errors["body"] = "Send at least one of: full_name, contact_number, new_password."

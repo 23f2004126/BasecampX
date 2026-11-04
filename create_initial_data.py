@@ -17,8 +17,9 @@ from app import create_app
 from extensions import db, security
 from models import (
     ROLE_ADMIN, ROLE_STAFF, ROLE_USER, TREK_DIFFICULTIES, Booking, ChecklistItem, Notification, Payment,
-    Review, StaffProfile, Trek, User,
+    Review, StaffProfile, Trek, User, Waitlist,
 )
+from utils.bookings import renumber_waitlist
 from utils.cache import clear_trek_cache
 
 # ---------------------------------------------------------------------------
@@ -29,6 +30,10 @@ STAFF = [
      "experience_years": 8, "specialization": "High-altitude treks"},
     {"email": "staff2@tma.com", "full_name": "Priya Rawat", "contact_number": "9876500002",
      "experience_years": 5, "specialization": "Alpine meadows & beginner treks"},
+    {"email": "staff3@tma.com", "full_name": "Karan Thakur", "contact_number": "9876500003",
+     "experience_years": 6, "specialization": "Winter & snow treks"},
+    {"email": "staff4@tma.com", "full_name": "Rahim Khan", "contact_number": "9876500004",
+     "experience_years": 3, "specialization": "First aid & rescue", "blacklisted": True},
 ]
 STAFF_PASSWORD = "staff123"
 
@@ -36,6 +41,14 @@ TREKKERS = [
     {"email": "trekker1@tma.com", "full_name": "Ananya Sharma", "contact_number": "9876500011"},
     {"email": "trekker2@tma.com", "full_name": "Vikram Singh", "contact_number": "9876500012"},
     {"email": "trekker3@tma.com", "full_name": "Meera Iyer", "contact_number": "9876500013"},
+    {"email": "trekker4@tma.com", "full_name": "Rahul Verma", "contact_number": "9876500014"},
+    {"email": "trekker5@tma.com", "full_name": "Priya Patel", "contact_number": "9876500015"},
+    {"email": "trekker6@tma.com", "full_name": "Karan Tiwari", "contact_number": "9876500016"},
+    {"email": "trekker7@tma.com", "full_name": "Neha Joshi", "contact_number": "9876500017"},
+    {"email": "trekker8@tma.com", "full_name": "Arjun Mehta", "contact_number": "9876500018"},
+    {"email": "trekker9@tma.com", "full_name": "Pooja Bisht", "contact_number": "9876500019"},
+    {"email": "trekker10@tma.com", "full_name": "Sana Khan", "contact_number": "9876500020"},
+    {"email": "trekker11@tma.com", "full_name": "Vikas Thapa", "contact_number": "9876500021", "blacklisted": True},
 ]
 TREKKER_PASSWORD = "user123"
 
@@ -72,9 +85,50 @@ TREKS = [
      "start_in": 20, "staff": 1,
      "description": "A UNESCO World Heritage valley carpeted with alpine flowers.",
      "instructions": "Best during monsoon; carry a rain jacket and poncho."},
+    # --- more demo treks: every status, a full trek with a waitlist, an almost-full one
+    {"name": "Brahmatal", "location": "Uttarakhand", "difficulty": "Moderate",
+     "duration_days": 6, "total_slots": 4, "price": 12000, "status": "Open",
+     "start_in": 25, "staff": 0,
+     "description": "A winter trek to a frozen lake with close views of Trishul and Nanda Ghunti.",
+     "instructions": "Snow on the trail: microspikes are provided at base camp."},
+    {"name": "Sandakphu", "location": "West Bengal", "difficulty": "Moderate",
+     "duration_days": 6, "total_slots": 15, "price": 14000, "status": "Open",
+     "start_in": 35, "staff": 2,
+     "description": "Walk the Singalila ridge on the India-Nepal border, with four of the five highest peaks in view.",
+     "instructions": "Carry a passport or voter ID for border checkpoints."},
+    {"name": "Goechala", "location": "Sikkim", "difficulty": "Hard",
+     "duration_days": 11, "total_slots": 12, "price": 24500, "status": "Open",
+     "start_in": 50, "staff": 2,
+     "description": "Sunrise over Kanchenjunga from Goechala viewpoint, through rhododendron forests.",
+     "instructions": "High altitude (4,600 m). Fitness certificate required."},
+    {"name": "Tarsar Marsar", "location": "Kashmir", "difficulty": "Moderate",
+     "duration_days": 7, "total_slots": 5, "price": 16500, "status": "Open",
+     "start_in": 40, "staff": 1,
+     "description": "Twin alpine lakes ringed by meadows in the Aru valley.",
+     "instructions": "Small group trek; register your ID with the forest department."},
+    {"name": "Chadar Trek", "location": "Ladakh", "difficulty": "Hard",
+     "duration_days": 9, "total_slots": 10, "price": 26000, "status": "Ongoing",
+     "start_in": -2, "staff": 0,
+     "description": "Walk on the frozen Zanskar river between towering canyon walls.",
+     "instructions": "Temperatures reach -25 °C. Gumboots and down gear are mandatory."},
+    {"name": "Har Ki Dun", "location": "Uttarakhand", "difficulty": "Easy",
+     "duration_days": 7, "total_slots": 15, "price": 11000, "status": "Completed",
+     "start_in": -75, "staff": 1,
+     "description": "The 'Valley of Gods', with ancient villages and views of Swargarohini.",
+     "instructions": "Good first Himalayan trek."},
+    {"name": "Kashmir Great Lakes", "location": "Kashmir", "difficulty": "Moderate",
+     "duration_days": 8, "total_slots": 20, "price": 21000, "status": "Approved",
+     "start_in": 75, "staff": 2,
+     "description": "Seven alpine lakes in eight days - often called India's most beautiful trek.",
+     "instructions": "Long walking days (6-8 hours)."},
+    {"name": "Dayara Bugyal", "location": "Uttarakhand", "difficulty": "Easy",
+     "duration_days": 5, "total_slots": 25, "price": 9500, "status": "Pending",
+     "start_in": 95, "staff": None,
+     "description": "Rolling high-altitude meadows above Barsu village.",
+     "instructions": "Suitable for families and beginners."},
 ]
 
-# (trekker index, trek name, booking status, payment status)
+# (trekker index, trek name, booking status, payment status[, booked how many days ago])
 BOOKINGS = [
     (0, "Everest Base Camp", "Booked", "Paid"),
     (2, "Everest Base Camp", "Booked", "Paid"),
@@ -83,13 +137,52 @@ BOOKINGS = [
     (0, "Kuari Pass", "Completed", "Paid"),     # history: completed trek
     (1, "Kuari Pass", "Completed", "Paid"),
     (2, "Kuari Pass", "Completed", "Paid"),
+    # --- more demo bookings, spread over the last months so the charts have shape
+    (4, "Everest Base Camp", "Booked", "Paid", 35),
+    (7, "Everest Base Camp", "Booked", "Paid", 28),
+    (6, "Roopkund", "Booked", "Paid", 16),
+    (8, "Roopkund", "Booked", "Paid", 4),
+    (3, "Roopkund", "Cancelled", "Refunded", 25),
+    (3, "Brahmatal", "Booked", "Paid", 12),       # Brahmatal: 4 seats, all taken ...
+    (4, "Brahmatal", "Booked", "Paid", 10),
+    (5, "Brahmatal", "Booked", "Paid", 8),
+    (6, "Brahmatal", "Booked", "Paid", 5),        # ... so it has a waitlist (WAITLIST below)
+    (3, "Sandakphu", "Booked", "Paid", 20),
+    (7, "Sandakphu", "Booked", "Paid", 15),
+    (1, "Sandakphu", "Booked", "Paid", 3),
+    (4, "Goechala", "Booked", "Paid", 40),
+    (8, "Goechala", "Booked", "Paid", 22),
+    (1, "Goechala", "Booked", "Paid", 9),
+    (2, "Goechala", "Cancelled", "Refunded", 30),
+    (5, "Tarsar Marsar", "Booked", "Paid", 18),   # 3 of 5 seats: "2 left" shows in red
+    (6, "Tarsar Marsar", "Booked", "Paid", 14),
+    (0, "Tarsar Marsar", "Booked", "Paid", 6),
+    (6, "Chadar Trek", "Booked", "Paid", 50),     # ongoing right now
+    (7, "Chadar Trek", "Booked", "Paid", 45),
+    (3, "Chadar Trek", "Booked", "Paid", 44),
+    (3, "Har Ki Dun", "Completed", "Paid", 120),  # completed, with reviews
+    (4, "Har Ki Dun", "Completed", "Paid", 115),
+    (0, "Har Ki Dun", "Completed", "Paid", 110),
+    (5, "Har Ki Dun", "Completed", "Paid", 100),
+    (8, "Har Ki Dun", "Completed", "Paid", 95),
+    (6, "Har Ki Dun", "Cancelled", "Refunded", 105),
+    (8, "Valley of Flowers", "Booked", "Paid", 60),
+    (5, "Valley of Flowers", "Booked", "Paid", 58),
 ]
 
-# (trekker index, rating, comment) - reviews of the completed Kuari Pass trek
+# Waitlist for the full Brahmatal trek, in joining order: (trekker index, trek name)
+WAITLIST = [(7, "Brahmatal"), (8, "Brahmatal"), (0, "Brahmatal")]
+
+# (trekker index, completed trek, rating, comment, hidden by admin)
 REVIEWS = [
-    (0, 5, "Stunning views of Nanda Devi and a brilliant trek leader. Well organised from start to finish."),
-    (1, 4, "Great trek for beginners. Day 3 was tough in the snow but totally worth it."),
-    (2, 5, "Loved the campsites and the food. Would book with TMA again."),
+    (0, "Kuari Pass", 5, "Stunning views of Nanda Devi and a brilliant trek leader. Well organised from start to finish.", False),
+    (1, "Kuari Pass", 4, "Great trek for beginners. Day 3 was tough in the snow but totally worth it.", False),
+    (2, "Kuari Pass", 5, "Loved the campsites and the food. Would book with TMA again.", False),
+    (3, "Har Ki Dun", 5, "Perfect first Himalayan trek. The village stays were the highlight.", False),
+    (4, "Har Ki Dun", 4, "Beautiful valley, though the last day was long.", False),
+    (0, "Har Ki Dun", 5, "Priya was a fantastic trek leader - safe, patient and full of stories.", False),
+    (5, "Har Ki Dun", 3, "Lovely views; tents could have been warmer.", False),
+    (8, "Har Ki Dun", 1, "Worst trip ever, total waste of money!!! (spam)", True),
 ]
 
 # Packing checklist defaults: (item, category, needed from difficulty, essential from difficulty or None)
@@ -193,7 +286,8 @@ def seed():
                 experience_years=s["experience_years"], specialization=s["specialization"]
             )
         if new:
-            created.append(f"staff    {s['email']}")
+            user.is_blacklisted = s.get("blacklisted", False)
+            created.append(f"staff    {s['email']}" + (" (blacklisted)" if user.is_blacklisted else ""))
         staff_users.append(user)
 
     # 5. Trekkers
@@ -204,7 +298,8 @@ def seed():
             full_name=t["full_name"], contact_number=t["contact_number"],
         )
         if new:
-            created.append(f"trekker  {t['email']}")
+            user.is_blacklisted = t.get("blacklisted", False)
+            created.append(f"trekker  {t['email']}" + (" (blacklisted)" if user.is_blacklisted else ""))
         trekkers.append(user)
 
     # 6. Treks (dates are relative to today so the demo never goes stale)
@@ -229,23 +324,36 @@ def seed():
 
     # 7. Bookings. A booking that holds a seat (Booked/Completed) uses up one
     #    available slot; a cancelled one gives its seat back.
-    for trekker_idx, trek_name, status, payment in BOOKINGS:
+    for trekker_idx, trek_name, status, payment, *days_ago in BOOKINGS:
         user, trek = trekkers[trekker_idx], treks[trek_name]
         exists = Booking.query.filter_by(user=user, trek=trek, status=status).first()
         if exists:
             continue
-        booking = Booking(user=user, trek=trek, status=status,
+        booked_at = datetime.now(timezone.utc) - timedelta(days=days_ago[0] if days_ago else 0)
+        booking = Booking(user=user, trek=trek, status=status, booking_date=booked_at,
                           payment_status=payment, amount=trek.price)
         if status == "Cancelled":
-            booking.cancelled_at = datetime.now(timezone.utc)
+            booking.cancelled_at = booked_at + timedelta(days=2)
         else:
             trek.available_slots -= 1
         db.session.add(booking)
         created.append(f"booking  {user.email} -> {trek_name} [{status}/{payment}]")
     db.session.flush()
 
-    seeded = [Booking.query.filter_by(user=trekkers[i], trek=treks[n], status=st).first()
-              for i, n, st, _ in BOOKINGS]
+    seeded = [Booking.query.filter_by(user=trekkers[b[0]], trek=treks[b[1]], status=b[2]).first()
+              for b in BOOKINGS]
+
+    # 7b. Waitlist for full treks (positions = joining order)
+    for trekker_idx, trek_name in WAITLIST:
+        user, trek = trekkers[trekker_idx], treks[trek_name]
+        if not Waitlist.query.filter_by(user=user, trek=trek, status="Waiting").first():
+            db.session.add(Waitlist(user=user, trek=trek, status="Waiting"))
+            db.session.add(Notification(user_id=user.id, title="Joined the waitlist",
+                                        message=f"You're on the waitlist for {trek_name}.", type="waitlist", link="/user/bookings"))
+            created.append(f"waitlist {user.email} -> {trek_name}")
+    db.session.flush()
+    for trek_name in {name for _, name in WAITLIST}:
+        renumber_waitlist(treks[trek_name].id)
 
     # 8. Payments for the seeded paid/refunded bookings
     for booking in seeded:
@@ -256,13 +364,13 @@ def seed():
             db.session.add(Payment(booking=booking, amount=booking.amount, method="UPI", status="Refunded"))
         created.append(f"payment  booking #{booking.id} [{booking.payment_status}]")
 
-    # 9. Reviews of the completed trek
-    for trekker_idx, rating, comment in REVIEWS:
-        booking = Booking.query.filter_by(user=trekkers[trekker_idx], trek=treks["Kuari Pass"], status="Completed").first()
+    # 9. Reviews of completed treks (one hidden by the admin, to show moderation)
+    for trekker_idx, trek_name, rating, comment, hidden in REVIEWS:
+        booking = Booking.query.filter_by(user=trekkers[trekker_idx], trek=treks[trek_name], status="Completed").first()
         if booking and booking.review is None:
             db.session.add(Review(user=trekkers[trekker_idx], trek=booking.trek, booking=booking,
-                                  rating=rating, comment=comment))
-            created.append(f"review   {trekkers[trekker_idx].email} -> Kuari Pass ({rating}*)")
+                                  rating=rating, comment=comment, is_hidden=hidden))
+            created.append(f"review   {trekkers[trekker_idx].email} -> {trek_name} ({rating}*{', hidden' if hidden else ''})")
 
     # 10. A few notifications matching the seeded bookings
     for booking in seeded:

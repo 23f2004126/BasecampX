@@ -13,8 +13,10 @@ Status changes allowed for staff:
 from flask import Blueprint, abort, jsonify
 from flask_security import current_user
 
+from sqlalchemy import or_
+
 from extensions import db
-from models import ROLE_STAFF, Booking, Trek, Waitlist
+from models import ROLE_STAFF, TREK_STATUSES, Booking, Trek, Waitlist
 from tasks.tasks import send_booking_email
 from utils.bookings import promote_from_waitlist
 from utils.cache import clear_trek_cache
@@ -22,7 +24,7 @@ from utils.decorators import role_required
 from utils.jobs import enqueue_quietly
 from utils.notify import notify_many
 from utils.pagination import paginate
-from utils.validators import json_body, match_choice, to_int, validation_error
+from utils.validators import arg_choice, arg_text, json_body, match_choice, to_int, validation_error
 
 staff_bp = Blueprint("staff", __name__, url_prefix="/api/staff")
 
@@ -106,8 +108,15 @@ def dashboard():
 @staff_bp.route("/treks", methods=["GET"])
 @role_required(ROLE_STAFF)
 def my_treks():
-    query = Trek.query.filter_by(staff_id=current_user.id).order_by(Trek.start_date)
-    return jsonify(paginate(query, trek_with_count))
+    """My assigned treks. Optional ?search= (name/location) and ?status=."""
+    query = Trek.query.filter_by(staff_id=current_user.id)
+    search = arg_text("search")
+    if search:
+        query = query.filter(or_(Trek.name.ilike(f"%{search}%"), Trek.location.ilike(f"%{search}%")))
+    status = arg_choice("status", TREK_STATUSES)
+    if status:
+        query = query.filter(Trek.status == status)
+    return jsonify(paginate(query.order_by(Trek.start_date), trek_with_count))
 
 
 @staff_bp.route("/treks/<int:trek_id>", methods=["GET"])

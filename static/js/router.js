@@ -15,33 +15,35 @@ import Login from './pages/Login.js';
 import Register from './pages/Register.js';
 import NotFound from './pages/NotFound.js';
 import AppLayout from './components/AppLayout.js';
-import EmptyState from './components/EmptyState.js';
-import AdminSettings from './pages/admin/Settings.js';
-import StaffParticipants from './pages/staff/Participants.js';
+// Admin
+import AdminDashboard from './pages/admin/AdminDashboard.js';
+import ManageTreks from './pages/admin/ManageTreks.js';
+import ManageStaff from './pages/admin/ManageStaff.js';
+import CreateStaff from './pages/admin/CreateStaff.js';
+import ManageUsers from './pages/admin/ManageUsers.js';
+import AllBookings from './pages/admin/AllBookings.js';
+import AdminSearch from './pages/admin/AdminSearch.js';
 import AdminReports from './pages/admin/Reports.js';
+import ManageReviews from './pages/admin/ManageReviews.js';
+import AdminSettings from './pages/admin/Settings.js';
+// Staff
+import StaffDashboard from './pages/staff/StaffDashboard.js';
+import StaffMyTreks from './pages/staff/MyTreks.js';
+import ManageTrek from './pages/staff/ManageTrek.js';
+import StaffParticipants from './pages/staff/Participants.js';
+import StaffProfile from './pages/staff/StaffProfile.js';
+// Trekker
+import UserDashboard from './pages/user/UserDashboard.js';
+import BrowseTreks from './pages/user/BrowseTreks.js';
+import TrekDetails from './pages/user/TrekDetails.js';
+import Checkout from './pages/user/Checkout.js';
+import MyBookings from './pages/user/MyBookings.js';
 import UserHistory from './pages/user/History.js';
+import UserProfile from './pages/user/Profile.js';
 import { auth, dashboardPath, isLoggedIn } from './store.js';
 
-/**
- * TEMPORARY: stands in for pages that are built in later parts of Phase 5b,
- * so every menu link already works and the layout can be tested.
- */
-const ComingSoon = {
-  name: 'ComingSoon',
-  components: { EmptyState },
-  template: `
-    <section>
-      <h1 class="page-title">{{ $route.meta.title }}</h1>
-      <EmptyState
-        title="This page is on its way"
-        :message="'It will be built in part ' + $route.meta.part + ' of Phase 5b.'"
-      />
-    </section>
-  `,
-};
-
 // A helper so each child route is one readable line.
-const page = (path, title, part, component = ComingSoon) => ({ path, component, meta: { title, part } });
+const page = (path, title, component) => ({ path, component, meta: { title } });
 
 const routes = [
   { path: '/', redirect: () => (isLoggedIn() ? dashboardPath() : '/login') },
@@ -53,15 +55,16 @@ const routes = [
     component: AppLayout,
     meta: { role: 'admin' },
     children: [
-      page('', 'Dashboard', 2),
-      page('treks', 'Manage Treks', 2),
-      page('staff', 'Trekking Staff', 2),
-      page('staff/new', 'Create Trekking Staff', 2),
-      page('users', 'Users (Trekkers)', 2),
-      page('bookings', 'All Bookings', 2),
-      page('search', 'Search', 2),
-      page('reports', 'Reports', 2, AdminReports),
-      page('settings', 'Settings', 2, AdminSettings),
+      page('', 'Dashboard', AdminDashboard),
+      page('treks', 'Manage Treks', ManageTreks),
+      page('staff', 'Trekking Staff', ManageStaff),
+      page('staff/new', 'Create Trekking Staff', CreateStaff),
+      page('users', 'Users (Trekkers)', ManageUsers),
+      page('bookings', 'All Bookings', AllBookings),
+      page('search', 'Search', AdminSearch),
+      page('reports', 'Reports', AdminReports),
+      page('reviews', 'Reviews', ManageReviews),
+      page('settings', 'Settings', AdminSettings),
     ],
   },
   {
@@ -69,11 +72,11 @@ const routes = [
     component: AppLayout,
     meta: { role: 'staff' },
     children: [
-      page('', 'My Dashboard', 3),
-      page('treks', 'My Treks', 3),
-      page('treks/:id(\\d+)', 'Manage Trek', 3),
-      page('participants', 'Participants', 3, StaffParticipants),
-      page('profile', 'Profile', 3),
+      page('', 'My Dashboard', StaffDashboard),
+      page('treks', 'My Treks', StaffMyTreks),
+      page('treks/:id(\\d+)', 'Manage Trek', ManageTrek),
+      page('participants', 'Participants', StaffParticipants),
+      page('profile', 'Profile', StaffProfile),
     ],
   },
   {
@@ -81,12 +84,13 @@ const routes = [
     component: AppLayout,
     meta: { role: 'user' },
     children: [
-      page('', 'Dashboard', 4),
-      page('treks', 'Browse Treks', 4),
-      page('treks/:id(\\d+)', 'Trek Details', 4),
-      page('bookings', 'My Bookings', 4),
-      page('history', 'Trekking History', 4, UserHistory),
-      page('profile', 'Profile', 4),
+      page('', 'Dashboard', UserDashboard),
+      page('treks', 'Browse Treks', BrowseTreks),
+      page('treks/:id(\\d+)', 'Trek Details', TrekDetails),
+      page('checkout/:bookingId(\\d+)', 'Checkout', Checkout),
+      page('bookings', 'My Bookings', MyBookings),
+      page('history', 'Trekking History', UserHistory),
+      page('profile', 'Profile', UserProfile),
     ],
   },
 

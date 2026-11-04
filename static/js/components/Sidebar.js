@@ -16,6 +16,7 @@ export const MENUS = {
     { to: '/admin/bookings', label: 'Bookings', icon: 'bi-calendar-check' },
     { to: '/admin/search', label: 'Search', icon: 'bi-search' },
     { to: '/admin/reports', label: 'Reports', icon: 'bi-bar-chart-line' },
+    { to: '/admin/reviews', label: 'Reviews', icon: 'bi-star' },
     { to: '/admin/settings', label: 'Settings', icon: 'bi-gear' },
   ],
   staff: [

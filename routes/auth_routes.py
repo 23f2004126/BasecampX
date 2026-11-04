@@ -5,6 +5,8 @@ POST /api/register  - create a trekker account
 POST /api/login     - check email + password, return an auth token
 POST /api/logout    - invalidate the current user's tokens
 GET  /api/me        - details of the logged-in user
+GET  /api/profile   - same, for the Settings / Profile pages (any role)
+PUT  /api/profile   - edit name, contact, password (+ experience/specialization for staff)
 """
 from flask import Blueprint, jsonify
 from flask_security import current_user, hash_password, verify_password
@@ -13,6 +15,7 @@ from extensions import db, security
 from models import ROLE_USER
 from utils.cache import clear_admin_cache
 from utils.decorators import json_error, token_required
+from utils.profile import update_profile
 from utils.validators import clean_email, json_body as _json_body
 from utils.validators import validate_registration, validation_error
 
@@ -85,3 +88,15 @@ def logout():
 @token_required
 def me():
     return jsonify(current_user.to_dict()), 200
+
+
+@auth_bp.route("/profile", methods=["GET"])
+@token_required
+def get_profile():
+    return jsonify(current_user.to_dict()), 200
+
+
+@auth_bp.route("/profile", methods=["PUT"])
+@token_required
+def edit_profile():
+    return update_profile(current_user)

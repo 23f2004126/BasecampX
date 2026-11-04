@@ -1095,3 +1095,195 @@ body.no-scroll {
 @media (max-width: 575.98px) {
   .report-export, .report-export .form-control, .report-export .btn { width: 100%; }
 }
+
+/* ===========================================================================
+   Trekker pages (dashboard, browse, details, checkout, bookings, profile)
+   =========================================================================== */
+.section-title { font-size: 1.3rem; margin-bottom: 1rem; }
+.text-prewrap { white-space: pre-line; }
+.back-link { display: inline-flex; gap: 6px; align-items: center; margin-bottom: 12px; font-weight: 600; text-decoration: none; }
+
+/* ---- Trek grid + card (1 / 2 / 3 columns) ---- */
+.trek-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+@media (min-width: 640px) { .trek-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .trek-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+.trek-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(75, 94, 84, 0.1);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  box-shadow: var(--shadow-soft);
+  transition: transform 0.3s var(--ease-out), box-shadow 0.3s var(--ease-out);
+}
+.trek-card:hover { transform: translateY(-6px); box-shadow: var(--shadow-lift); }
+.trek-card__media { position: relative; display: block; aspect-ratio: 5 / 3; overflow: hidden; background: var(--mist); }
+.trek-card__media .trek-image { transition: transform 0.6s var(--ease-out); }
+.trek-card:hover .trek-card__media .trek-image { transform: scale(1.05); }
+.trek-card__rating {
+  position: absolute; top: 10px; right: 10px;
+  padding: 2px 10px; border-radius: 999px;
+  background: rgba(22, 33, 27, 0.75); color: #fff; font-size: 0.8rem; font-weight: 600;
+}
+.trek-card__rating i { color: var(--summit); }
+.trek-card__body { display: flex; flex: 1; flex-direction: column; gap: 6px; padding: 16px 18px 18px; }
+.trek-card__name { margin: 0; font-size: 1.15rem; }
+.trek-card__name a { color: inherit; text-decoration: none; }
+.trek-card__name a:hover { color: var(--forest-deep); text-decoration: underline; }
+.trek-card__location { margin: 0; color: var(--moss); font-size: 0.9rem; }
+.trek-card__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 2px 0 0; font-size: 0.9rem; }
+.trek-card__price { margin-left: auto; font-weight: 700; }
+.trek-card__slots { margin: 0 0 10px; font-size: 0.9rem; color: var(--moss); }
+.trek-card__slots.is-low strong { color: var(--danger); }
+.trek-card__body .btn { margin-top: auto; }
+
+.trek-image { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* ---- Trek details ---- */
+.trek-hero {
+  position: relative;
+  height: clamp(220px, 34vw, 360px);
+  margin-bottom: 24px;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+}
+.trek-hero__overlay {
+  position: absolute; inset: auto 0 0 0;
+  padding: 60px 24px 20px;
+  background: linear-gradient(180deg, transparent, rgba(16, 26, 21, 0.78));
+  color: #fff;
+}
+.trek-hero__badges { display: flex; gap: 6px; margin-bottom: 6px; }
+.trek-hero__badges .badge-soft { background: rgba(255, 255, 255, 0.9); }
+.trek-hero__title { margin: 0; color: #fff; font-size: clamp(1.7rem, 1.2rem + 2vw, 2.6rem); }
+.trek-hero__meta { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 4px 0 0; color: var(--cloud); }
+.trek-hero__meta .bi-star-fill { color: var(--summit); }
+
+.booking-panel { position: sticky; top: calc(var(--topbar-height) + 16px); }
+.booking-panel__price { margin-bottom: 8px; font-family: var(--font-display); font-size: 1.8rem; font-weight: 600; }
+.booking-panel__price span { color: var(--moss); font-family: var(--font-body); font-size: 0.9rem; font-weight: 400; }
+.booking-panel__note { margin: 0 0 10px; color: var(--forest); }
+.slots { margin: 16px 0 18px; }
+.progress { --bs-progress-bg: rgba(75, 94, 84, 0.14); --bs-progress-bar-bg: var(--forest); height: 8px; border-radius: 99px; }
+
+.review-list { margin: 0 0 12px; padding: 0; list-style: none; }
+.review { padding: 14px 0; border-bottom: 1px dashed rgba(75, 94, 84, 0.18); }
+.review:last-child { border-bottom: 0; }
+.review__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.review__text { margin: 8px 0 0; }
+.avatar--sm { width: 28px; height: 28px; font-size: 0.8rem; }
+.avatar--lg { width: 56px; height: 56px; font-size: 1.4rem; }
+
+/* ---- Stars ---- */
+.stars { display: inline-flex; gap: 2px; line-height: 1; }
+.stars__star { position: relative; display: inline-block; padding: 0; border: 0; background: none; font-size: 0.95rem; }
+.stars__bg { color: rgba(75, 94, 84, 0.22); }
+.stars__fg { position: absolute; inset: 0 auto 0 0; overflow: hidden; color: var(--summit); white-space: nowrap; }
+.stars--input { border-radius: 8px; cursor: pointer; }
+.stars--input .stars__star { cursor: pointer; }
+.stars--lg .stars__star { font-size: 2rem; padding: 0 2px; }
+
+/* ---- Packing checklist ---- */
+.packing__progress { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.packing__grid { display: grid; grid-template-columns: 1fr; gap: 16px 28px; }
+@media (min-width: 640px) { .packing__grid { grid-template-columns: 1fr 1fr; } }
+.packing__group legend { margin-bottom: 6px; color: var(--moss); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.packing .form-check { margin-bottom: 6px; }
+.packing .form-check-label.is-packed { color: var(--moss); text-decoration: line-through; }
+.packing__essential {
+  margin-left: 6px; padding: 1px 6px; border-radius: 6px;
+  background: rgba(242, 140, 40, 0.16); color: #8a4a10; font-size: 0.7rem; font-weight: 700;
+}
+
+/* ---- Modal (ConfirmDialog, PaymentModal, review form) ---- */
+.tma-modal { position: fixed; inset: 0; z-index: 1080; display: grid; place-items: center; padding: 16px; }
+.tma-modal__backdrop { position: absolute; inset: 0; background: rgba(16, 26, 21, 0.55); }
+.tma-modal__dialog {
+  position: relative; width: min(520px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto;
+  padding: 24px; border-radius: var(--radius-lg); background: #fff; box-shadow: var(--shadow-lift);
+}
+.tma-modal__dialog--sm { width: min(420px, 100%); }
+.tma-modal__title { margin-bottom: 8px; font-size: 1.3rem; }
+.tma-modal__text { color: var(--moss); }
+.tma-modal__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
+.modal-enter-active .tma-modal__dialog { animation: fadeUp 0.3s var(--ease-out); }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
+
+/* ---- Checkout ---- */
+.pay-methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
+.pay-method {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 12px 6px; border: 1px solid rgba(75, 94, 84, 0.25); border-radius: var(--radius);
+  font-weight: 600; text-align: center; cursor: pointer; transition: border-color 0.2s, background-color 0.2s;
+}
+.pay-method i { font-size: 1.3rem; }
+.pay-method.is-selected { border-color: var(--summit); background: rgba(242, 140, 40, 0.08); box-shadow: inset 0 0 0 1px var(--summit); }
+.pay-method:focus-within { outline: 3px solid rgba(76, 160, 180, 0.5); outline-offset: 2px; }
+.checkout-summary__image { height: 140px; margin: -20px -20px 16px; overflow: hidden; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.hold-timer { margin: 16px 0 0; padding: 10px 14px; border-radius: var(--radius); background: rgba(76, 160, 180, 0.1); }
+.hold-timer.is-urgent { background: rgba(176, 67, 42, 0.1); color: var(--danger); }
+.pay-result { display: grid; place-items: center; width: 64px; height: 64px; margin: 8px auto 12px; border-radius: 50%; font-size: 2rem; color: #fff; }
+.pay-result--ok { background: #2f8a4f; }
+.pay-result--fail { background: var(--danger); }
+
+/* ---- Tabs ---- */
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid rgba(75, 94, 84, 0.15); overflow-x: auto; }
+.tabs__tab {
+  padding: 10px 16px; border: 0; border-bottom: 3px solid transparent; background: none;
+  color: var(--moss); font-weight: 600; white-space: nowrap;
+}
+.tabs__tab:hover { color: var(--forest); }
+.tabs__tab.is-active { border-bottom-color: var(--summit); color: var(--forest); }
+
+@media (prefers-reduced-motion: reduce) {
+  .trek-card, .trek-card:hover, .trek-card:hover .trek-card__media .trek-image { transform: none; }
+}
+
+/* Filters beside a section heading stay on one row (wrap only on phones) */
+.page-head > .filter-bar { flex-wrap: nowrap; }
+@media (max-width: 575.98px) { .page-head > .filter-bar { flex-wrap: wrap; width: 100%; } }
+
+/* Logout always sits at the bottom of the sidebar, however many items it has */
+.side-nav__menu > .side-nav__logout { margin-top: auto; }
+
+/* ===========================================================================
+   Admin & staff pages
+   =========================================================================== */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
+.stat-grid--3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.stat-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 18px 20px; border: 1px solid rgba(75, 94, 84, 0.1); border-radius: var(--radius-lg);
+  background: #fff; box-shadow: var(--shadow-soft);
+}
+.stat-card__label { margin: 0 0 4px; color: var(--moss); font-size: 0.85rem; font-weight: 600; }
+.stat-card__value { margin: 0; font-family: var(--font-display); font-size: 2rem; font-weight: 600; line-height: 1.1; }
+.stat-card__icon {
+  display: grid; place-items: center; flex-shrink: 0; width: 48px; height: 48px;
+  border-radius: 14px; background: rgba(242, 140, 40, 0.14); color: #b45f12; font-size: 1.4rem;
+}
+
+.form-narrow { max-width: 760px; }
+.filter-bar__select--wide { flex-basis: 260px; }
+.tma-modal__dialog--lg { width: min(860px, 100%); }
+
+/* Admin checklist editor */
+.checklist-admin { max-height: 320px; margin: 0 0 14px; padding: 0; overflow-y: auto; list-style: none; }
+.checklist-admin li {
+  display: flex; align-items: center; gap: 10px; padding: 7px 4px;
+  border-bottom: 1px dashed rgba(75, 94, 84, 0.15); font-size: 0.92rem;
+}
+.checklist-admin li.is-default { color: var(--moss); }
+.checklist-admin__cat { flex: 0 0 88px; color: var(--moss); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.checklist-admin__add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.checklist-admin__add .form-control { flex: 1 1 220px; }
+.checklist-admin__add .form-select { flex: 0 1 150px; }
+
+/* Review moderation */
+.review-admin { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.review-admin__item.is-hidden { border-style: dashed; background: #fbfbf6; }
+.review-admin__item.is-hidden .review__text { color: var(--moss); }
