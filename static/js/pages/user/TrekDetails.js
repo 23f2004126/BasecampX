@@ -12,11 +12,11 @@ import EmptyState from '../../components/EmptyState.js';
 import PackingChecklist from '../../components/PackingChecklist.js';
 import StarRating from '../../components/StarRating.js';
 import TrekImage from '../../components/TrekImage.js';
-import { confirmDialog } from '../../components/ConfirmDialog.js';
 import { toast } from '../../components/Toast.js';
-import { del, get, post } from '../../api.js';
+import { get } from '../../api.js';
 import { startBooking } from '../../utils/booking.js';
 import { badgeClass, formatDate, formatMoney, formatRange } from '../../utils/format.js';
+import { joinWaitlist, leaveWaitlist } from '../../utils/waitlist.js';
 
 export default {
   name: 'TrekDetails',
@@ -94,36 +94,16 @@ export default {
       this.busy = false;
     },
 
-    async joinWaitlist() {
+    async join() {
       this.busy = true;
-      try {
-        const res = await post(`/treks/${this.trekId}/waitlist`);
-        toast.success(res.message);
-        await this.load();
-      } catch (error) {
-        toast.error(error.message);
-      } finally {
-        this.busy = false;
-      }
+      if (await joinWaitlist(this.trek)) await this.load();
+      this.busy = false;
     },
 
-    async leaveWaitlist() {
-      const ok = await confirmDialog({
-        title: 'Leave the waitlist?',
-        message: `You'll lose your place (#${this.waitEntry.position}) for ${this.trek.name}.`,
-        confirmText: 'Leave waitlist', tone: 'danger',
-      });
-      if (!ok) return;
+    async leave() {
       this.busy = true;
-      try {
-        const res = await del(`/treks/${this.trekId}/waitlist`);
-        toast.info(res.message);
-        await this.load();
-      } catch (error) {
-        toast.error(error.message);
-      } finally {
-        this.busy = false;
-      }
+      if (await leaveWaitlist(this.trek, this.waitEntry.position)) await this.load();
+      this.busy = false;
     },
   },
   template: `
@@ -221,11 +201,11 @@ export default {
               </template>
               <template v-else-if="state === 'full'">
                 <p class="booking-panel__note">This trek is full.</p>
-                <button type="button" class="btn btn-primary btn-lg w-100" :disabled="busy" @click="joinWaitlist">Join Waitlist</button>
+                <button type="button" class="btn btn-primary btn-lg w-100" :disabled="busy" @click="join">Join Waitlist</button>
               </template>
               <template v-else-if="state === 'waiting'">
-                <p class="booking-panel__note"><i class="bi bi-hourglass-split"></i> You're <strong>#{{ waitEntry.position }}</strong> on the waitlist.</p>
-                <button type="button" class="btn btn-outline-danger w-100" :disabled="busy" @click="leaveWaitlist">Leave waitlist</button>
+                <p class="booking-panel__note"><i class="bi bi-hourglass-split"></i> <strong>Waitlist #{{ waitEntry.position }}</strong></p>
+                <button type="button" class="btn btn-outline-danger w-100" :disabled="busy" @click="leave">Leave waitlist</button>
               </template>
               <button v-else type="button" class="btn btn-light btn-lg w-100" disabled>Not Available</button>
             </div>

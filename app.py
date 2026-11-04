@@ -38,6 +38,7 @@ def create_app():
     from routes.booking_routes import booking_bp
     from routes.notification_routes import notification_bp
     from routes.payment_routes import payment_bp
+    from routes.pwa_routes import pwa_bp
     from routes.review_routes import review_bp
     from routes.staff_routes import staff_bp
     from routes.task_routes import task_bp
@@ -56,6 +57,7 @@ def create_app():
     app.register_blueprint(waitlist_bp)
     app.register_blueprint(review_bp)
     app.register_blueprint(notification_bp)
+    app.register_blueprint(pwa_bp)
 
     @app.before_request
     def protect_exports():

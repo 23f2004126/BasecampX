@@ -7,7 +7,7 @@
  *   2. GET  /api/tasks/<task_id> every 2s until SUCCESS / FAILURE
  *   3. SUCCESS -> toast with a Download button (GET /api/exports/<file>)
  *
- * Completed treks: "Rate trek" (POST /api/reviews) and "Certificate"
+ * Completed treks: "Write review" (POST /api/reviews) and "Certificate"
  * (GET /api/user/bookings/<id>/certificate, PDF).
  */
 import Loader from '../../components/Loader.js';
@@ -184,7 +184,7 @@ export default {
                   <template v-if="b.status === 'Completed'">
                     <span v-if="b.reviewed" class="small text-moss me-2"><i class="bi bi-check2"></i> Reviewed</span>
                     <button v-else type="button" class="btn btn-sm btn-outline-primary me-1" @click="openReview(b)">
-                      <i class="bi bi-star me-1" aria-hidden="true"></i>Rate trek
+                      <i class="bi bi-star me-1" aria-hidden="true"></i>Write review
                     </button>
                     <button type="button" class="btn btn-sm btn-primary" :disabled="downloadingId === b.id" @click="certificate(b)">
                       <span v-if="downloadingId === b.id" class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
@@ -206,7 +206,7 @@ export default {
         <div v-if="review" class="tma-modal" @keydown.esc="review = null">
           <div class="tma-modal__backdrop" @click="review = null"></div>
           <form class="tma-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="review-title" novalidate @submit.prevent="submitReview">
-            <h2 id="review-title" class="tma-modal__title">Rate {{ review.booking.trek_name }}</h2>
+            <h2 id="review-title" class="tma-modal__title">Review {{ review.booking.trek_name }}</h2>
             <div class="mb-3">
               <StarRating ref="stars" v-model="review.rating" editable label="Your rating" class="stars--lg" />
             </div>

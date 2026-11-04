@@ -6,9 +6,11 @@
  *
  * The Book button reads "Not Available" (disabled) when the trek isn't Open
  * or has no seats left. "Slots Left" turns red at 3 or fewer.
+ * An Open trek with no seats also offers Join Waitlist, or "Waitlist #N" + Leave.
  */
 import TrekImage from './TrekImage.js';
 import { badgeClass, formatMoney } from '../utils/format.js';
+import { joinWaitlist, leaveWaitlist, myTreks } from '../utils/waitlist.js';
 
 export default {
   name: 'TrekCard',
@@ -18,7 +20,14 @@ export default {
     action: { type: String, default: 'details' }, // 'book' | 'details'
   },
   emits: ['book'],
+  data: () => ({ busy: false }),
   computed: {
+    full() {
+      return this.trek.status === 'Open' && this.trek.available_slots === 0 && !myTreks.booked[this.trek.id];
+    },
+    waitEntry() {
+      return myTreks.waiting[this.trek.id] || null;
+    },
     available() {
       return this.trek.status === 'Open' && this.trek.available_slots > 0;
     },
@@ -26,7 +35,20 @@ export default {
       return `/user/treks/${this.trek.id}`;
     },
   },
-  methods: { badgeClass, formatMoney },
+  methods: {
+    badgeClass,
+    formatMoney,
+    async join() {
+      this.busy = true;
+      await joinWaitlist(this.trek);
+      this.busy = false;
+    },
+    async leave() {
+      this.busy = true;
+      await leaveWaitlist(this.trek, this.waitEntry.position);
+      this.busy = false;
+    },
+  },
   template: `
     <article class="trek-card">
       <router-link :to="detailsLink" class="trek-card__media" tabindex="-1" aria-hidden="true">
@@ -49,6 +71,13 @@ export default {
           {{ available ? 'Book Now' : 'Not Available' }}
         </button>
         <router-link v-else :to="detailsLink" class="btn btn-outline-primary w-100">View Details</router-link>
+        <div v-if="full" class="trek-card__waitlist">
+          <template v-if="waitEntry">
+            <span class="fw-semibold"><i class="bi bi-hourglass-split" aria-hidden="true"></i> Waitlist #{{ waitEntry.position }}</span>
+            <button type="button" class="btn btn-sm btn-outline-danger" :disabled="busy" @click="leave">Leave</button>
+          </template>
+          <button v-else type="button" class="btn btn-sm btn-primary w-100" :disabled="busy" @click="join">Join Waitlist</button>
+        </div>
       </div>
     </article>
   `,

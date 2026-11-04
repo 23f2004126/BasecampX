@@ -139,16 +139,15 @@ def previous_month(today=None):
     return last_month.year, last_month.month
 
 
-def build_monthly_report(year, month):
-    """All numbers for one calendar month, ready for monthly_report.html."""
-    start = date(year, month, 1)
-    end = (start + timedelta(days=32)).replace(day=1)          # first day of next month
-    start_dt, end_dt = datetime(start.year, start.month, 1), datetime(end.year, end.month, 1)
-    in_month = (Booking.booking_date >= start_dt) & (Booking.booking_date < end_dt)
+def build_report(start, end):
+    """All numbers for a date range (both days included), ready for monthly_report.html."""
+    start_dt = datetime(start.year, start.month, start.day)
+    end_dt = datetime(end.year, end.month, end.day) + timedelta(days=1)   # midnight after the last day
+    in_range = (Booking.booking_date >= start_dt) & (Booking.booking_date < end_dt)
 
-    # Treks conducted = completed treks that ended this month
+    # Treks conducted = completed treks that ended inside the range
     conducted = (
-        Trek.query.filter(Trek.status == "Completed", Trek.end_date >= start, Trek.end_date < end)
+        Trek.query.filter(Trek.status == "Completed", Trek.end_date >= start, Trek.end_date <= end)
         .order_by(Trek.end_date).all()
     )
     conducted_ids = [t.id for t in conducted]
@@ -164,7 +163,7 @@ def build_monthly_report(year, month):
 
     top = (
         db.session.query(Trek.name, Trek.location, func.count(Booking.id).label("n"))
-        .join(Booking).filter(in_month, Booking.status != "Cancelled")
+        .join(Booking).filter(in_range, Booking.status != "Cancelled")
         .group_by(Trek.id).order_by(func.count(Booking.id).desc(), Trek.name).limit(5).all()
     )
 
@@ -172,23 +171,23 @@ def build_monthly_report(year, month):
     for staff in _users_with_role(ROLE_STAFF).order_by(User.full_name):
         bookings = (
             Booking.query.join(Trek)
-            .filter(Trek.staff_id == staff.id, in_month, Booking.status != "Cancelled").count()
+            .filter(Trek.staff_id == staff.id, in_range, Booking.status != "Cancelled").count()
         )
         staff_rows.append({
             "name": staff.full_name, "email": staff.email,
-            "treks": len(staff.assigned_treks), "bookings": bookings,
+            "treks": sum(t.staff_id == staff.id for t in conducted), "bookings": bookings,
         })
     staff_rows.sort(key=lambda s: (-s["bookings"], s["name"] or ""))
 
     return {
-        "month_key": f"{year:04d}-{month:02d}",
-        "month_label": start.strftime("%B %Y"),
+        "heading": f"Report · {_fmt(start)} – {_fmt(end)}",
+        "file_key": f"{start.isoformat()}_to_{end.isoformat()}",
         "period_start": _fmt(start),
-        "period_end": _fmt(end - timedelta(days=1)),
+        "period_end": _fmt(end),
         "generated_at": datetime.now().strftime("%d %b %Y, %I:%M %p"),
         "summary": {
             "treks_conducted": len(conducted),
-            "total_bookings": Booking.query.filter(in_month).count(),
+            "total_bookings": Booking.query.filter(in_range).count(),
             "cancellations": Booking.query.filter(
                 Booking.cancelled_at >= start_dt, Booking.cancelled_at < end_dt).count(),
             "unique_trekkers": unique_trekkers,
@@ -204,11 +203,33 @@ def build_monthly_report(year, month):
     }
 
 
-def monthly_report_files(year, month):
-    """(report data, html, pdf bytes) - shared by the scheduled job and the download endpoint."""
-    data = build_monthly_report(year, month)
+def build_monthly_report(year, month):
+    """The same report for one calendar month, labelled as a monthly report."""
+    start = date(year, month, 1)
+    last_day = (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    label = start.strftime("%B %Y")
+    month_key = f"{year:04d}-{month:02d}"
+    return {
+        **build_report(start, last_day),
+        "heading": f"Monthly Report · {label}",
+        "file_key": month_key,
+        "month_key": month_key,
+        "month_label": label,
+    }
+
+
+def report_files(data):
+    """(report data, html, pdf bytes) for data from build_report / build_monthly_report."""
     html = render("monthly_report.html", **data)
     return data, html, html_to_pdf(html)
+
+
+def monthly_report_files(year, month):
+    return report_files(build_monthly_report(year, month))
+
+
+def range_report_files(start, end):
+    return report_files(build_report(start, end))
 
 
 @celery.task(name="tasks.monthly_report")

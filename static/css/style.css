@@ -19,7 +19,7 @@
    --------------------------------------------------------------------------- */
 .toast-stack {
   position: fixed;
-  top: 16px;
+  top: calc(var(--topbar-height) + 10px); /* below the top bar: keeps the bell visible */
   right: 16px;
   z-index: 1100;
   display: flex;
@@ -755,7 +755,6 @@ body.no-scroll {
   margin-left: auto;
 }
 
-.top-bar__slot:empty { display: none; }
 
 .top-bar__user {
   display: flex;
@@ -1068,7 +1067,7 @@ body.no-scroll {
 .tma-toast__action { align-self: flex-start; margin-top: 8px; }
 
 /* ---- Charts (components/ChartCard.js) ---- */
-.chart-card { display: flex; flex-direction: column; }
+.chart-card { position: relative; display: flex; flex-direction: column; }
 .chart-card__head {
   display: flex;
   align-items: center;
@@ -1079,6 +1078,18 @@ body.no-scroll {
 .chart-card__toggle { padding: 2px 12px; }
 .chart-card__canvas { position: relative; height: 260px; }
 .chart-card__canvas--doughnut { height: 300px; }
+/* Spinner over the card while a new date range loads (the chart stays underneath). */
+.chart-card__loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--summit);
+}
 .chart-card__empty { margin: auto 0; padding: 40px 0; color: var(--moss); text-align: center; }
 .chart-card__swatch {
   display: inline-block;
@@ -1091,6 +1102,9 @@ body.no-scroll {
 
 /* ---- Reports header: month + PDF button ---- */
 .report-export { display: flex; flex-wrap: wrap; gap: 8px; }
+.report-range { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 1.5rem; }
+.report-range__field { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 0 8px; color: var(--moss); font-size: 0.875rem; }
+.report-range__field .form-control { width: auto; }
 .report-export .form-control { width: auto; min-width: 160px; }
 @media (max-width: 575.98px) {
   .report-export, .report-export .form-control, .report-export .btn { width: 100%; }
@@ -1287,3 +1301,66 @@ body.no-scroll {
 .review-admin { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .review-admin__item.is-hidden { border-style: dashed; background: #fbfbf6; }
 .review-admin__item.is-hidden .review__text { color: var(--moss); }
+
+/* ===========================================================================
+   Notification bell (components/NotificationBell.js)
+   =========================================================================== */
+.notif { position: relative; }
+.notif__bell {
+  position: relative; display: grid; place-items: center; width: 44px; height: 44px;
+  border: 1px solid rgba(75, 94, 84, 0.15); border-radius: 50%; background: #fff;
+  color: var(--forest); font-size: 1.15rem;
+}
+.notif__bell:hover { box-shadow: var(--shadow-soft); }
+.notif__bell.is-shaking i { display: inline-block; transform-origin: 50% 10%; animation: bellShake 0.7s ease-in-out; }
+@keyframes bellShake {
+  0%, 100% { transform: rotate(0); }
+  15% { transform: rotate(16deg); }
+  35% { transform: rotate(-14deg); }
+  55% { transform: rotate(9deg); }
+  75% { transform: rotate(-5deg); }
+}
+.notif__badge {
+  position: absolute; top: -3px; right: -3px; min-width: 19px; height: 19px; padding: 0 5px;
+  border: 2px solid var(--cloud); border-radius: 999px; background: var(--danger); color: #fff;
+  font-size: 0.68rem; font-weight: 700; line-height: 15px; text-align: center;
+}
+.notif__menu {
+  position: absolute; top: calc(100% + 10px); right: 0; z-index: 1040; width: 380px;
+  overflow: hidden; border-radius: var(--radius); background: #fff; box-shadow: var(--shadow-lift);
+}
+/* Phones: spans the top bar (its backdrop-filter makes it the fixed containing block) */
+@media (max-width: 575.98px) {
+  .notif__menu { position: fixed; top: calc(100% + 6px); right: 12px; left: 12px; width: auto; }
+}
+.notif__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid rgba(75, 94, 84, 0.12);
+}
+.notif__title { margin: 0; font-size: 1.05rem; }
+.notif__mark-all { padding: 0; border: 0; background: none; color: var(--bs-link-color); font-size: 0.82rem; font-weight: 600; }
+.notif__mark-all:hover { text-decoration: underline; }
+.notif__empty { margin: 0; padding: 32px 16px; color: var(--moss); text-align: center; }
+.notif__empty i { display: block; margin-bottom: 6px; font-size: 1.6rem; }
+.notif__list { max-height: min(440px, 65dvh); margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.notif__item {
+  display: flex; gap: 12px; width: 100%; padding: 12px 16px; border: 0;
+  border-bottom: 1px solid rgba(75, 94, 84, 0.08); background: #fff; color: var(--forest); text-align: left;
+}
+.notif__item:hover { background: rgba(160, 195, 190, 0.14); }
+.notif__item.is-unread { background: rgba(242, 140, 40, 0.09); }
+.notif__item.is-unread:hover { background: rgba(242, 140, 40, 0.16); }
+.notif__icon {
+  display: grid; flex-shrink: 0; place-items: center; width: 34px; height: 34px;
+  border-radius: 50%; background: rgba(75, 94, 84, 0.1); color: var(--moss);
+}
+.notif__item.is-unread .notif__icon { background: rgba(242, 140, 40, 0.18); color: #b45f12; }
+.notif__body { display: flex; flex-direction: column; min-width: 0; }
+.notif__item-title { font-size: 0.9rem; font-weight: 600; }
+.notif__item.is-unread .notif__item-title { font-weight: 700; }
+.notif__message { color: var(--moss); font-size: 0.84rem; line-height: 1.35; overflow-wrap: anywhere; }
+.notif__time { margin-top: 2px; color: var(--moss); font-size: 0.75rem; }
+
+/* Waitlist controls on a trek card */
+.trek-card__waitlist { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 0.9rem; }
+.trek-card__waitlist .btn { margin-top: 0; }

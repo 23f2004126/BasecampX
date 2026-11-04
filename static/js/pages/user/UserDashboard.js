@@ -12,6 +12,7 @@ import { auth } from '../../store.js';
 import { startBooking } from '../../utils/booking.js';
 import { badgeClass, formatDate, formatRange } from '../../utils/format.js';
 import { TREK_DIFFICULTIES } from '../../utils/constants.js';
+import { refreshMyTreks } from '../../utils/waitlist.js';
 
 export default {
   name: 'UserDashboard',
@@ -40,6 +41,7 @@ export default {
   mounted() {
     this.loadTreks();
     this.loadBookings();
+    refreshMyTreks();
     get('/treks/locations').then((d) => (this.locations = d.locations)).catch(() => {});
   },
   methods: {
@@ -116,7 +118,7 @@ export default {
                   <span v-if="b.payment_status === 'Pending'" :class="badgeClass('pending')" class="ms-1">Payment due</span>
                 </td>
                 <td class="td-actions text-end">
-                  <router-link v-if="b.payment_status === 'Pending'" :to="'/user/checkout/' + b.id" class="btn btn-sm btn-primary me-1">Pay now</router-link>
+                  <router-link v-if="b.payment_status === 'Pending'" :to="'/user/checkout/' + b.id" class="btn btn-sm btn-primary me-1">Complete payment</router-link>
                   <router-link :to="'/user/treks/' + b.trek_id" class="btn btn-sm btn-outline-primary">View Details</router-link>
                 </td>
               </tr>

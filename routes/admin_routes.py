@@ -1,22 +1,22 @@
 """
 Admin API (role: admin). Everything is under /api/admin.
 
-Dashboard : GET  /stats, GET /reports, GET /search
+Dashboard : GET  /stats, GET /reports?from=&to=, GET /search
 Treks     : GET/POST /treks, PUT/DELETE /treks/<id>, PUT /treks/<id>/assign
 Staff     : GET/POST /staff
 Users     : GET /users, PUT /users/<id>/blacklist, PUT /users/<id>/whitelist
 Bookings  : GET /bookings
-Jobs      : GET /reports/pdf, POST /jobs/daily-reminder, POST /jobs/monthly-report
+Jobs      : GET /reports/pdf?from=&to=, POST /jobs/daily-reminder, POST /jobs/monthly-report
 Checklist : POST /treks/<id>/checklist, DELETE /checklist/<item_id>
 (Review moderation lives in routes/review_routes.py under /api/admin/reviews.)
 """
 import re
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from io import BytesIO
 
 from flask import Blueprint, abort, jsonify, request, send_file
 from flask_security import hash_password
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 
 from extensions import db, security
 from models import (
@@ -24,7 +24,8 @@ from models import (
     TREK_STATUSES, Booking, ChecklistItem, Review, Role, StaffProfile, Trek, User, Waitlist,
 )
 from tasks.tasks import (
-    daily_reminder, monthly_report, monthly_report_files, previous_month, send_booking_email, send_staff_welcome,
+    daily_reminder, monthly_report, monthly_report_files, previous_month, range_report_files, send_booking_email,
+    send_staff_welcome,
 )
 from utils.bookings import promote_from_waitlist
 from utils.cache import cached_json, clear_admin_cache, clear_trek_cache, ttl
@@ -34,7 +35,7 @@ from utils.notify import notify
 from utils.pdf import PdfError
 from utils.pagination import paginate
 from utils.validators import (
-    arg_choice, arg_int, arg_text, json_body, match_choice, to_int, validate_staff,
+    arg_choice, arg_int, arg_text, json_body, match_choice, parse_date, to_int, validate_staff,
     validate_trek, validation_error,
 )
 
@@ -319,69 +320,129 @@ def search():
 # ---------------------------------------------------------------------------
 # Reports (chart-ready: {"labels": [...], "data": [...]})
 # ---------------------------------------------------------------------------
-def last_n_months(n, today=None):
-    """['2026-06', ..., '2026-11'] - the current month and the n-1 before it."""
-    today = today or date.today()
-    year, month = today.year, today.month
-    months = []
-    for _ in range(n):
+REPORT_DEFAULT_MONTHS = 6            # no dates sent: this month and the 5 before it
+REPORT_YEARS = (2000, 2100)          # keeps "bookings per month" to a sane number of points
+DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def first_of_month_before(day, months):
+    """First day of the month `months` months before `day`."""
+    index = day.year * 12 + (day.month - 1) - months
+    return date(index // 12, index % 12 + 1, 1)
+
+
+def months_between(start, end):
+    """['2026-06', ..., '2026-11'] - every calendar month the range touches."""
+    months, year, month = [], start.year, start.month
+    while (year, month) <= (end.year, end.month):
         months.append(f"{year:04d}-{month:02d}")
-        month -= 1
-        if month == 0:
-            year, month = year - 1, 12
-    return list(reversed(months))
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return months
+
+
+def report_date_arg(name):
+    """A date from the query string; None if it wasn't sent; 400 if it's invalid."""
+    value = (request.args.get(name) or "").strip()
+    if not value:
+        return None
+    # The regex is needed because date.fromisoformat also accepts 20261104 and 2026-W45-3.
+    day = parse_date(value) if DAY_RE.match(value) else None
+    if day is None:
+        abort(400, description=f"'{name}' must be a real date in YYYY-MM-DD format, e.g. 2026-11-04.")
+    if not REPORT_YEARS[0] <= day.year <= REPORT_YEARS[1]:
+        abort(400, description=f"'{name}' must be between the years {REPORT_YEARS[0]} and {REPORT_YEARS[1]}.")
+    return day
+
+
+def parse_report_range():
+    """?from=YYYY-MM-DD&to=YYYY-MM-DD -> (start, end), both days included.
+
+    Used by the charts and the PDF, so both always read the range the same way.
+    Default: the last 6 calendar months, up to today.
+    """
+    end = report_date_arg("to") or date.today()
+    start = report_date_arg("from") or first_of_month_before(end, REPORT_DEFAULT_MONTHS - 1)
+    if start > end:
+        abort(400, description="'from' must be on or before 'to'.")
+    return start, end
 
 
 @admin_bp.route("/reports", methods=["GET"])
 @role_required(ROLE_ADMIN)
 def reports():
-    return cached_json("admin:reports", ttl("CACHE_TTL_ADMIN"), build_reports)
+    start, end = parse_report_range()
+    # The dates are part of the key, so each range is cached on its own.
+    # The key still starts with admin:, so clear_admin_cache() removes every range.
+    key = f"admin:reports:{start.isoformat()}:{end.isoformat()}"
+    return cached_json(key, ttl("CACHE_TTL_ADMIN"), lambda: build_reports(start, end))
 
 
-def build_reports():
-    """Chart data behind GET /api/admin/reports (runs only on a cache MISS)."""
+def build_reports(start, end):
+    """Chart data for one date range (runs only on a cache MISS).
+
+    Which date decides whether a row is inside the range:
+      bookings        -> booking_date
+      completed treks -> end_date
+      other treks     -> created_at (their trek dates are usually still in the future)
+      reviews         -> created_at
+      waitlist        -> created_at (when the person joined)
+    """
+    # booking_date and created_at are datetimes, so the range ends at midnight after `end`.
+    start_dt = datetime.combine(start, time.min)
+    end_dt = datetime.combine(end + timedelta(days=1), time.min)
+
     # Cancelled bookings don't count as "demand" in any of these charts.
-    not_cancelled = Booking.status != "Cancelled"
+    booked_in_range = and_(Booking.status != "Cancelled",
+                           Booking.booking_date >= start_dt, Booking.booking_date < end_dt)
 
     # 1. Top 5 treks by number of bookings
     top = (
         db.session.query(Trek.name, func.count(Booking.id))
-        .join(Booking).filter(not_cancelled)
-        .group_by(Trek.id).order_by(func.count(Booking.id).desc()).limit(5).all()
+        .join(Booking).filter(booked_in_range)
+        .group_by(Trek.id).order_by(func.count(Booking.id).desc(), Trek.name).limit(5).all()
     )
 
-    # 2. Bookings per month for the last 6 months (months with 0 still appear)
-    months = last_n_months(6)
+    # 2. Bookings per month, only the months inside the range (months with 0 still appear)
+    months = months_between(start, end)
     per_month = dict.fromkeys(months, 0)
-    for (booked_on,) in db.session.query(Booking.booking_date).filter(not_cancelled):
-        key = booked_on.strftime("%Y-%m")
-        if key in per_month:
-            per_month[key] += 1
+    for (booked_on,) in db.session.query(Booking.booking_date).filter(booked_in_range):
+        per_month[booked_on.strftime("%Y-%m")] += 1
 
     # 3. Treks by status (every status listed, even if 0)
-    status_counts = dict(db.session.query(Trek.status, func.count(Trek.id)).group_by(Trek.status).all())
+    status_counts = dict(
+        db.session.query(Trek.status, func.count(Trek.id))
+        .filter(or_(
+            and_(Trek.status == "Completed", Trek.end_date >= start, Trek.end_date <= end),
+            and_(Trek.status != "Completed", Trek.created_at >= start_dt, Trek.created_at < end_dt),
+        ))
+        .group_by(Trek.status).all()
+    )
 
     # 4. Difficulty preference: how many different trekkers booked each difficulty
     difficulty_counts = dict(
         db.session.query(Trek.difficulty, func.count(func.distinct(Booking.user_id)))
-        .join(Booking).filter(not_cancelled).group_by(Trek.difficulty).all()
+        .join(Booking).filter(booked_in_range).group_by(Trek.difficulty).all()
     )
 
     # 5. Average rating per trek (visible reviews only), best first
     ratings = (
         db.session.query(Trek.name, func.avg(Review.rating))
-        .join(Review).filter(Review.is_hidden.is_(False))
-        .group_by(Trek.id).order_by(func.avg(Review.rating).desc()).limit(10).all()
+        .join(Review)
+        .filter(Review.is_hidden.is_(False), Review.created_at >= start_dt, Review.created_at < end_dt)
+        .group_by(Trek.id).order_by(func.avg(Review.rating).desc(), Trek.name).limit(10).all()
     )
 
-    # 6. Waitlist demand: people currently waiting, per trek
+    # 6. Waitlist demand: people still waiting who joined inside the range, per trek
     waiting = (
         db.session.query(Trek.name, func.count(Waitlist.id))
-        .join(Waitlist).filter(Waitlist.status == "Waiting")
-        .group_by(Trek.id).order_by(func.count(Waitlist.id).desc()).limit(10).all()
+        .join(Waitlist)
+        .filter(Waitlist.status == "Waiting", Waitlist.created_at >= start_dt, Waitlist.created_at < end_dt)
+        .group_by(Trek.id).order_by(func.count(Waitlist.id).desc(), Trek.name).limit(10).all()
     )
 
     return {
+        "from": start.isoformat(),
+        "to": end.isoformat(),
         "bookings_per_trek": {"labels": [n for n, _ in top], "data": [c for _, c in top]},
         "bookings_per_month": {"labels": months, "data": list(per_month.values())},
         "treks_by_status": {"labels": list(TREK_STATUSES),
@@ -394,7 +455,7 @@ def build_reports():
 
 
 # ---------------------------------------------------------------------------
-# Monthly report PDF + manual job triggers (for demos)
+# Report PDF + manual job triggers (for demos)
 # ---------------------------------------------------------------------------
 MONTH_RE = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
 
@@ -415,14 +476,19 @@ def parse_month(value):
 @admin_bp.route("/reports/pdf", methods=["GET"])
 @role_required(ROLE_ADMIN)
 def report_pdf():
-    """The monthly report as a PDF download, generated on demand."""
-    year, month = parse_month(request.args.get("month"))
+    """The report as a PDF download, for ?from=&to= (same range as the charts) or ?month=YYYY-MM."""
+    if request.args.get("month"):
+        year, month = parse_month(request.args.get("month"))
+        make_files = lambda: monthly_report_files(year, month)
+    else:
+        start, end = parse_report_range()
+        make_files = lambda: range_report_files(start, end)
     try:
-        data, _html, pdf = monthly_report_files(year, month)
+        data, _html, pdf = make_files()
     except PdfError as error:
         abort(500, description=str(error))
     return send_file(BytesIO(pdf), mimetype="application/pdf", as_attachment=True,
-                     download_name=f"tma-report-{data['month_key']}.pdf")
+                     download_name=f"tma-report-{data['file_key']}.pdf")
 
 
 @admin_bp.route("/jobs/daily-reminder", methods=["POST"])

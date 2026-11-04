@@ -1,6 +1,6 @@
 /**
  * My Bookings: tabs Upcoming / Cancelled / Waitlist.
- *   Upcoming  : GET /api/user/bookings?status=Booked     (Pay now, Cancel)
+ *   Upcoming  : GET /api/user/bookings?status=Booked     (Complete payment, Cancel)
  *   Cancelled : GET /api/user/bookings?status=Cancelled
  *   Waitlist  : GET /api/user/waitlist                   (Leave)
  * After every change the current tab is re-fetched from the API.
@@ -148,7 +148,7 @@ export default {
               </td>
               <td data-label="Status"><span :class="badgeClass(b.status)">{{ b.status }}</span></td>
               <td class="td-actions text-end text-nowrap">
-                <router-link v-if="b.payment_status === 'Pending'" :to="'/user/checkout/' + b.id" class="btn btn-sm btn-primary">Pay now</router-link>
+                <router-link v-if="b.payment_status === 'Pending'" :to="'/user/checkout/' + b.id" class="btn btn-sm btn-primary">Complete payment</router-link>
                 <router-link :to="'/user/treks/' + b.trek_id" class="btn btn-sm btn-outline-primary ms-1">View Details</router-link>
                 <button v-if="canCancel(b)" type="button" class="btn btn-sm btn-outline-danger ms-1" :disabled="busyId === b.id" @click="cancel(b)">Cancel</button>
               </td>

@@ -11,6 +11,7 @@ import TrekCard from '../../components/TrekCard.js';
 import { toast } from '../../components/Toast.js';
 import { get } from '../../api.js';
 import { DURATIONS, TREK_DIFFICULTIES } from '../../utils/constants.js';
+import { refreshMyTreks } from '../../utils/waitlist.js';
 
 const PER_PAGE = 9; // 3 x 3 grid
 const FILTERS = ['search', 'difficulty', 'location', 'duration', 'sort'];
@@ -49,6 +50,7 @@ export default {
   },
   mounted() {
     this.load();
+    refreshMyTreks();
     get('/treks/locations').then((d) => (this.locations = d.locations)).catch(() => {});
   },
   beforeUnmount() {

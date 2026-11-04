@@ -43,6 +43,7 @@ export default {
     values: { type: Array, default: () => [] },
     colors: { type: Object, default: () => ({}) },
     valueLabel: { type: String, default: 'Bookings' },
+    loading: { type: Boolean, default: false }, // new data is on its way: spinner over the chart
   },
   data() {
     return { showTable: false, error: '' };
@@ -63,13 +64,25 @@ export default {
     this.render();
   },
   beforeUnmount() {
-    this.chart?.destroy();
+    this.renderId = -1; // a render still waiting must not draw any more
+    this.removeChart();
   },
   methods: {
-    async render() {
+    removeChart() {
       this.chart?.destroy();
       this.chart = null;
-      if (this.isEmpty || this.showTable) return;
+    },
+
+    // Called for each change of labels or values, so two calls can overlap.
+    // renderId lets only the newest call draw: one canvas never gets two charts.
+    async render() {
+      this.renderId = (this.renderId || 0) + 1;
+      const id = this.renderId;
+
+      if (this.isEmpty || this.showTable) {
+        this.removeChart();
+        return;
+      }
       let Chart;
       try {
         Chart = await loadChartJs();
@@ -78,12 +91,27 @@ export default {
         return;
       }
       await this.$nextTick();
-      if (!this.$refs.canvas) return; // switched to table / unmounted meanwhile
-      this.chart = new Chart(this.$refs.canvas, this.config());
+      if (id !== this.renderId) return; // a newer render took over
+      const canvas = this.$refs.canvas;
+      if (!canvas) return; // switched to table / unmounted meanwhile
+
+      const next = this.config();
+      if (this.chart?.canvas === canvas) {
+        // Same canvas: update in place, so the chart animates to the new numbers.
+        this.chart.data = next.data;
+        this.chart.update();
+      } else {
+        // The canvas was rebuilt (back from the table or the empty state).
+        this.removeChart();
+        this.chart = new Chart(canvas, next);
+      }
     },
 
     config() {
       const font = { family: 'Inter, system-ui, sans-serif', size: 12 };
+      // Plain copies: Chart.js keeps these arrays, and they shouldn't be Vue's reactive ones.
+      const labels = [...this.labels];
+      const values = [...this.values];
       const tooltip = {
         backgroundColor: '#16211b',
         padding: 10,
@@ -103,10 +131,10 @@ export default {
         return {
           type: 'doughnut',
           data: {
-            labels: this.labels,
+            labels,
             datasets: [{
-              data: this.values,
-              backgroundColor: this.labels.map((l) => this.colors[l] || SERIES),
+              data: values,
+              backgroundColor: labels.map((l) => this.colors[l] || SERIES),
               borderColor: SURFACE,
               borderWidth: 2, // the 2px surface gap between slices
               hoverOffset: 6,
@@ -147,7 +175,8 @@ export default {
         border: { display: false },
       };
       const categoryAxis = {
-        ticks: { color: INK, font, autoSkip: false, maxRotation: 0 },
+        // A long date range gives many months: the line chart may skip some labels.
+        ticks: { color: INK, font, autoSkip: isLine, maxRotation: 0 },
         grid: { display: false },
         border: { color: GRID },
       };
@@ -155,10 +184,10 @@ export default {
       return {
         type: isLine ? 'line' : 'bar',
         data: {
-          labels: this.labels,
+          labels,
           datasets: [{
             label: this.valueLabel,
-            data: this.values,
+            data: values,
             ...(isLine
               ? {
                   borderColor: LINE,
@@ -191,7 +220,12 @@ export default {
     },
   },
   template: `
-    <section class="panel chart-card h-100">
+    <section class="panel chart-card h-100" :aria-busy="loading ? 'true' : 'false'">
+      <div v-if="loading" class="chart-card__loading" role="status">
+        <span class="spinner-border" aria-hidden="true"></span>
+        <span class="visually-hidden">Loading {{ title }}…</span>
+      </div>
+
       <header class="chart-card__head">
         <h2 class="panel__title mb-0">{{ title }}</h2>
         <button
@@ -206,7 +240,7 @@ export default {
         </button>
       </header>
 
-      <p v-if="isEmpty" class="chart-card__empty">No data yet.</p>
+      <p v-if="isEmpty" class="chart-card__empty">No data for these dates.</p>
       <p v-else-if="error" class="chart-card__empty">{{ error }}</p>
 
       <div v-else-if="showTable" class="chart-card__table">

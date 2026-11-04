@@ -4,6 +4,7 @@
  * - Turns error responses into an ApiError with the server's message
  * - If a logged-in request gets 401 (token expired / logged out elsewhere),
  *   clears the session and sends the user to the login page
+ * - Announces booking, payment and waitlist calls, so the bell can refresh
  */
 import { auth, clearAuth } from './store.js';
 
@@ -14,6 +15,9 @@ export class ApiError extends Error {
     this.errors = errors; // field -> message, from 400 validation errors
   }
 }
+
+export const DATA_CHANGED_EVENT = 'tma:data-changed';
+const CREATES_NOTIFICATION = /^\/(bookings|payments)|\/waitlist$/;
 
 export async function api(path, { method = 'GET', body, withAuth = true } = {}) {
   const headers = { Accept: 'application/json' };
@@ -34,8 +38,15 @@ export async function api(path, { method = 'GET', body, withAuth = true } = {}) 
 
   const data = await response.json().catch(() => ({}));
 
+  // Sent for failures too: a declined payment also creates a notification.
+  if (method !== 'GET' && CREATES_NOTIFICATION.test(path)) {
+    window.dispatchEvent(new Event(DATA_CHANGED_EVENT));
+  }
+
   if (!response.ok) {
-    if (response.status === 401 && sentToken) {
+    // Only if this is still the current token: a slow reply to an old one (say,
+    // a bell poll overlapping a password change) must not log the user out.
+    if (response.status === 401 && sentToken && sentToken === auth.token) {
       clearAuth();
       window.location.hash = '#/login';
     }

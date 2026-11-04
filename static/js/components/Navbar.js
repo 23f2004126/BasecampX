@@ -1,14 +1,17 @@
 /**
- * Top bar: menu button (mobile), app name, page title, a reserved slot for
- * the notification bell (Phase 8), and the user menu (Profile / Logout).
+ * Top bar: menu button (mobile), app name, page title, the notification bell,
+ * and the user menu (Profile / Install app / Logout).
  * The dropdown uses Bootstrap's own JS (data-bs-toggle="dropdown").
  */
+import InstallPrompt from './InstallPrompt.js';
+import NotificationBell from './NotificationBell.js';
 import { ROLE_LABELS, auth } from '../store.js';
 
 const PROFILE_PATHS = { staff: '/staff/profile', user: '/user/profile' }; // admin has no profile page
 
 export default {
   name: 'Navbar',
+  components: { InstallPrompt, NotificationBell },
   props: {
     menuOpen: { type: Boolean, default: false },
   },
@@ -49,8 +52,7 @@ export default {
       </div>
 
       <div class="top-bar__actions">
-        <!-- Reserved for <NotificationBell /> in Phase 8 -->
-        <div class="top-bar__slot" aria-hidden="true"></div>
+        <NotificationBell />
 
         <div class="dropdown">
           <button
@@ -73,6 +75,7 @@ export default {
                 <i class="bi bi-person-circle me-2" aria-hidden="true"></i>Profile
               </router-link>
             </li>
+            <InstallPrompt />
             <li v-if="profilePath"><hr class="dropdown-divider"></li>
             <li>
               <button type="button" class="dropdown-item" @click="$emit('logout')">

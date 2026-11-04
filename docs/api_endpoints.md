@@ -29,6 +29,8 @@ need the header `Authentication-Token: <token>` from `POST /api/login`.
 | POST | `/api/login` | Public | Body: `email, password` → `{token, role, id, full_name}`. 401 bad credentials, 403 blacklisted/inactive. |
 | POST | `/api/logout` | Any | Invalidates all of the user's tokens. |
 | GET | `/api/me` | Any | The logged-in user. |
+| GET | `/api/profile` | Any | My account (used by Admin Settings and Staff Profile). |
+| PUT | `/api/profile` | Any | Update `full_name`, `contact_number` (staff also `experience_years`, `specialization`); `new_password` + `current_password` changes the password and returns a new `token`. |
 
 ## Admin (`routes/admin_routes.py`)
 
@@ -47,8 +49,8 @@ need the header `Authentication-Token: <token>` from `POST /api/login`.
 | PUT | `/api/admin/users/<id>/whitelist` | admin | Remove the blacklist. |
 | GET | `/api/admin/bookings?status=&trek_id=&page=` | admin | All bookings incl. cancelled/completed history. Paginated. |
 | GET | `/api/admin/search?q=&type=users\|staff\|treks` | admin | Global search (max 20 per type). Omit `type` to search all three. |
-| GET | `/api/admin/reports` | admin | Chart data `{labels, data}`: `bookings_per_trek` (top 5), `bookings_per_month` (last 6), `treks_by_status`, `users_by_difficulty`, `avg_rating_per_trek` (top 10, visible reviews), `waitlist_demand` (people waiting per trek). Cancelled bookings excluded. Cached 2 min. |
-| GET | `/api/admin/reports/pdf?month=YYYY-MM` | admin | Monthly report as a PDF download (default: last month). |
+| GET | `/api/admin/reports?from=YYYY-MM-DD&to=YYYY-MM-DD` | admin | Default range: last 6 months. Bad date or `from` after `to`: 400. Each range is cached separately. Chart data `{labels, data}` for the range: `bookings_per_trek` (top 5), `bookings_per_month` (months inside the range), `treks_by_status`, `users_by_difficulty`, `avg_rating_per_trek` (top 10, visible reviews), `waitlist_demand` (people waiting per trek). Cancelled bookings excluded. Cached 2 min. |
+| GET | `/api/admin/reports/pdf?from=YYYY-MM-DD&to=YYYY-MM-DD` | admin | Report as a PDF download, same range and rules as `/api/admin/reports`. `?month=YYYY-MM` gives the monthly report instead. |
 | POST | `/api/admin/jobs/daily-reminder` | admin | Run the daily reminder job now → 202 `{task_id}`. |
 | POST | `/api/admin/jobs/monthly-report` | admin | Body: `{month?}`. Email the monthly report now → 202 `{task_id}`. |
 | POST | `/api/admin/treks/<id>/checklist` | admin | Body: `{item, category, is_essential}`. Add a trek-specific packing item. |
@@ -65,7 +67,7 @@ Every endpoint with a trek `<id>` returns **403** unless `trek.staff_id` is the 
 | Method | URL | Role | Purpose |
 |---|---|---|---|
 | GET | `/api/staff/dashboard` | staff | Assigned-trek count, total participants, ongoing treks. |
-| GET | `/api/staff/treks?page=` | staff | My assigned treks, each with `participant_count`. Paginated. |
+| GET | `/api/staff/treks?search=&status=&page=` | staff | My assigned treks, each with `participant_count`. Paginated. |
 | GET | `/api/staff/treks/<id>` | staff | Trek details + participant list (name, email, phone, booking/payment status). |
 | PUT | `/api/staff/treks/<id>` | staff | Body: `available_slots` and/or `status` (`Open`/`Closed` only, trek must be Approved/Open/Closed). Slots must be 0…(total − booked). |
 | PUT | `/api/staff/treks/<id>/start` | staff | Open/Closed → **Ongoing**. |
@@ -94,6 +96,7 @@ Every endpoint with a trek `<id>` returns **403** unless `trek.staff_id` is the 
 |---|---|---|---|
 | GET | `/api/user/dashboard` | user | Upcoming bookings (with trek details) + up to 4 open treks. |
 | GET | `/api/user/bookings?status=&page=` | user | My bookings with trek details. Paginated. |
+| GET | `/api/user/bookings/<id>` | user | One of my bookings with trek and payment attempts (Checkout). |
 | GET | `/api/user/history?page=` | user | My Completed and Cancelled bookings with trek details. Paginated. |
 | GET | `/api/user/profile` | user | My profile. |
 | PUT | `/api/user/profile` | user | Update `full_name`, `contact_number`; to change password send `new_password` + `current_password`. A password change logs out other devices and returns a new `token`. |

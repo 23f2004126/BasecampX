@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>TMA Monthly Report – {{ month_label }}</title>
+  <title>TMA {{ heading }}</title>
   <style>
     /* Plain CSS + tables only: this same file is the email body AND the PDF
        (xhtml2pdf has no flexbox/grid/CSS variables). */
@@ -30,7 +30,7 @@
 <body>
   <div class="header">
     <div class="brand">TREKKING MANAGEMENT APPLICATION</div>
-    <div class="title">Monthly Report &middot; {{ month_label }}</div>
+    <div class="title">{{ heading }}</div>
     <div class="meta">{{ period_start }} – {{ period_end }} &nbsp;|&nbsp; Generated {{ generated_at }}</div>
   </div>
 
@@ -55,7 +55,7 @@
     {% endfor %}
   </table>
   {% else %}
-  <div class="empty">No treks were completed this month.</div>
+  <div class="empty">No treks were completed in this period.</div>
   {% endif %}
 
   <h2>Top 5 popular treks</h2>
@@ -69,13 +69,13 @@
     {% endfor %}
   </table>
   {% else %}
-  <div class="empty">No bookings were made this month.</div>
+  <div class="empty">No bookings were made in this period.</div>
   {% endif %}
 
   <h2>Bookings per staff member</h2>
   {% if staff %}
   <table class="data">
-    <tr><th width="30%">Staff member</th><th width="34%">Email</th><th width="14%" class="num">Treks led</th><th width="22%" class="num">Bookings this month</th></tr>
+    <tr><th width="30%">Staff member</th><th width="34%">Email</th><th width="14%" class="num">Treks led</th><th width="22%" class="num">Bookings in period</th></tr>
     {% for s in staff %}
     <tr class="{{ 'alt' if loop.index is even }}">
       <td><b>{{ s.name }}</b></td><td>{{ s.email }}</td><td class="num">{{ s.treks }}</td><td class="num">{{ s.bookings }}</td>
@@ -86,6 +86,6 @@
   <div class="empty">No staff members yet.</div>
   {% endif %}
 
-  <div class="footer">TMA monthly report for {{ month_label }}. Cancelled bookings are not counted in "Top 5" or staff bookings.</div>
+  <div class="footer">TMA {{ heading }}. Cancelled bookings are not counted in "Top 5" or staff bookings.</div>
 </body>
 </html>
