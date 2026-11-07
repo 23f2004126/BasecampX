@@ -39,7 +39,7 @@ need the header `Authentication-Token: <token>` from `POST /api/login`.
 | GET | `/api/admin/stats` | admin | Totals (treks, trekkers, staff, bookings) + 5 most recent bookings. |
 | GET | `/api/admin/treks?search=&status=&page=&per_page=` | admin | All treks, searchable by name/location. Paginated. |
 | POST | `/api/admin/treks` | admin | Create a trek. Required: `name, location, difficulty, duration_days, total_slots, price, start_date, end_date`. Optional: `description, instructions, image_url, status` (default Pending). `available_slots = total_slots`. |
-| PUT | `/api/admin/treks/<id>` | admin | Update any trek fields. Changing `total_slots` shifts `available_slots` by the same amount (never below 0); 409 if lower than seats already booked. |
+| PUT | `/api/admin/treks/<id>` | admin | Update any trek fields. Changing `total_slots` shifts `available_slots` by the same amount (never below 0); 409 if lower than seats already booked. A status must agree with the dates: Completed can't end in the future, Ongoing must include today, Open/Approved/Pending must start in the future (400 otherwise). |
 | DELETE | `/api/admin/treks/<id>` | admin | Delete a trek. 409 if it has active bookings, or any booking history (close it instead). |
 | PUT | `/api/admin/treks/<id>/assign` | admin | Body: `{staff_id}` (or `null` to unassign). 400 if the user isn't staff or is blacklisted. |
 | POST | `/api/admin/staff` | admin | Create staff user + profile. Body: `full_name, email, password, contact_number, experience_years, specialization`. |
@@ -70,8 +70,8 @@ Every endpoint with a trek `<id>` returns **403** unless `trek.staff_id` is the 
 | GET | `/api/staff/treks?search=&status=&page=` | staff | My assigned treks, each with `participant_count`. Paginated. |
 | GET | `/api/staff/treks/<id>` | staff | Trek details + participant list (name, email, phone, booking/payment status). |
 | PUT | `/api/staff/treks/<id>` | staff | Body: `available_slots` and/or `status` (`Open`/`Closed` only, trek must be Approved/Open/Closed). Slots must be 0…(total − booked). |
-| PUT | `/api/staff/treks/<id>/start` | staff | Open/Closed → **Ongoing**. |
-| PUT | `/api/staff/treks/<id>/complete` | staff | Ongoing → **Completed**; all its Booked bookings become Completed. |
+| PUT | `/api/staff/treks/<id>/start` | staff | Open/Closed → **Ongoing**. An early start moves the trek's dates to begin today. |
+| PUT | `/api/staff/treks/<id>/complete` | staff | Ongoing → **Completed**; the end date becomes today if it was later. Paid bookings become Completed; unpaid holds are cancelled. |
 
 ## Treks (`routes/trek_routes.py`)
 
@@ -148,3 +148,10 @@ Created on: seat held, payment success/failure, booking cancelled (incl. auto-ca
 
 Scheduled (Celery beat, Asia/Kolkata): daily reminder 18:00 · auto-cancel unpaid bookings every 10 min · monthly report 1st of the month 09:00.
 
+## Not part of the API
+
+| Method | URL | Purpose |
+|---|---|---|
+| GET | `/` | The single-page app (`templates/index.html`). |
+| GET | `/service-worker.js` | The PWA service worker, served from the site root so it controls the whole app. |
+| GET | `/static/<path>` | CSS, JS, images and the manifest. `/static/exports/` is blocked. |

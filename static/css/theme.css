@@ -75,8 +75,7 @@ body {
   min-height: 100dvh;
 }
 
-h1, h2, h3, h4, h5, h6,
-.font-display {
+h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -120,15 +119,6 @@ h1, h2, h3, h4, h5, h6,
   --bs-btn-focus-shadow-rgb: 76, 160, 180;
 }
 
-.btn-secondary {
-  --bs-btn-bg: var(--moss);
-  --bs-btn-border-color: var(--moss);
-  --bs-btn-hover-bg: var(--forest);
-  --bs-btn-hover-border-color: var(--forest);
-  --bs-btn-active-bg: var(--forest-deep);
-  --bs-btn-active-border-color: var(--forest-deep);
-}
-
 /* Accent button for the main call to action */
 .btn-summit {
   --bs-btn-color: var(--forest-ink);
@@ -157,11 +147,7 @@ h1, h2, h3, h4, h5, h6,
   border-color: var(--forest);
 }
 
-.text-summit { color: var(--summit) !important; }
-.text-sky { color: var(--sky) !important; }
 .text-moss { color: var(--moss) !important; }
-.bg-cloud { background-color: var(--cloud) !important; }
-.bg-forest { background-color: var(--forest) !important; }
 
 /* ---- Ripple (used by buttons; see utils/motion.js addRipple) ---- */
 .has-ripple {
@@ -188,20 +174,10 @@ h1, h2, h3, h4, h5, h6,
   to   { opacity: 1; transform: none; }
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-8px); }
-}
-
 /* Clouds travel across the whole viewport */
 @keyframes drift {
   from { transform: translateX(-40vw); }
   to   { transform: translateX(140vw); }
-}
-
-@keyframes shimmer {
-  from { background-position: -200% 0; }
-  to   { background-position: 200% 0; }
 }
 
 @keyframes ripple {
@@ -217,25 +193,7 @@ h1, h2, h3, h4, h5, h6,
   75%      { transform: translateX(-3px); }
 }
 
-.anim-fade-up { animation: fadeUp 0.6s var(--ease-out) both; }
-.anim-float { animation: float 4s ease-in-out infinite; }
 .anim-shake { animation: shake 0.5s ease-in-out; }
-
-/* Skeleton placeholder shimmer */
-.shimmer {
-  background: linear-gradient(90deg, rgba(160, 195, 190, 0.25) 25%, rgba(231, 233, 219, 0.7) 50%, rgba(160, 195, 190, 0.25) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.6s linear infinite;
-}
-
-/* Screen-reader-only text */
-.sr-only {
-  position: absolute !important;
-  width: 1px; height: 1px;
-  padding: 0; margin: -1px;
-  overflow: hidden; clip: rect(0, 0, 0, 0);
-  white-space: nowrap; border: 0;
-}
 
 /* =========================================================================
    Reduced motion: users who ask the OS for less motion get (almost) none.

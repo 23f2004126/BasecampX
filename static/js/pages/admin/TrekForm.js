@@ -51,7 +51,7 @@ export default {
       if (f.price === '' || !(+f.price >= 0)) e.price = 'Price must be 0 or more.';
       if (!f.start_date) e.start_date = 'Required.';
       if (!f.end_date) e.end_date = 'Required.';
-      else if (f.start_date && f.end_date <= f.start_date) e.end_date = 'End date must be after the start date.';
+      else if (f.start_date && f.end_date < f.start_date) e.end_date = "End date can't be before the start date.";
       this.errors = e;
       return !Object.keys(e).length;
     },

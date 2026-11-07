@@ -200,6 +200,18 @@ class Trek(db.Model):
     waitlist = db.relationship("Waitlist", back_populates="trek", cascade="all, delete-orphan")
     checklist_items = db.relationship("ChecklistItem", back_populates="trek", cascade="all, delete-orphan")
 
+    def start_on(self, day):
+        """The trek really starts on `day`: an early start moves both dates, same length."""
+        if self.start_date > day:
+            self.end_date = day + (self.end_date - self.start_date)
+            self.start_date = day
+
+    def finish_on(self, day):
+        """The trek really ended on `day`, so a Completed trek never ends in the future."""
+        self.start_date = min(self.start_date, day)
+        self.end_date = day
+        self.duration_days = (self.end_date - self.start_date).days + 1
+
     def rating_summary(self):
         """(average rating rounded to 1 decimal or None, number of visible reviews)"""
         avg, count = (

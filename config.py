@@ -11,22 +11,28 @@ INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 
+def required_env(name):
+    """Secrets have no default in the code: they must come from .env."""
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"{name} is not set. Copy .env.example to .env and fill it in.")
+    return value
+
+
 def env_bool(name, default=False):
     return os.environ.get(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
 
 
 class Config:
     # ---------- Core ----------
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
+    SECRET_KEY = required_env("SECRET_KEY")
 
     # ---------- Database (SQLite) ----------
     SQLALCHEMY_DATABASE_URI = "sqlite:///" + os.path.join(INSTANCE_DIR, "tma.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # ---------- Flask-Security (token auth) ----------
-    SECURITY_PASSWORD_SALT = os.environ.get(
-        "SECURITY_PASSWORD_SALT", "dev-password-salt-change-me"
-    )
+    SECURITY_PASSWORD_SALT = required_env("SECURITY_PASSWORD_SALT")
     SECURITY_PASSWORD_HASH = "bcrypt"
     # Clients send their token in this header on every request.
     SECURITY_TOKEN_AUTHENTICATION_HEADER = "Authentication-Token"
@@ -43,7 +49,7 @@ class Config:
 
     # ---------- First admin (created by create_initial_data.py) ----------
     ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@tma.com")
-    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 
     # ---------- Cache (Redis) ----------
     CACHE_TYPE = "RedisCache"

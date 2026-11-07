@@ -213,6 +213,18 @@ TREK_REQUIRED = (
 )
 
 
+def status_date_problem(status, start, end):
+    """Why this status can't go with these dates (None if it can)."""
+    today = date.today()
+    if status == "Completed" and end > today:
+        return "A Completed trek must have ended: its end date can't be in the future."
+    if status == "Ongoing" and not start <= today <= end:
+        return "An Ongoing trek's dates must include today."
+    if status in ("Open", "Approved", "Pending") and start <= today:
+        return f"A trek that is {status} must start in the future."
+    return None
+
+
 def validate_trek(data, existing=None):
     """
     Create (existing=None): all TREK_REQUIRED fields must be present.
@@ -279,7 +291,16 @@ def validate_trek(data, existing=None):
     # Cross-field rule, using the merged values on update.
     start = cleaned.get("start_date", existing.start_date if existing else None)
     end = cleaned.get("end_date", existing.end_date if existing else None)
-    if start and end and not start < end and "end_date" not in errors:
-        errors["end_date"] = "End date must be after the start date."
+    if start and end and start > end and "end_date" not in errors:
+        errors["end_date"] = "End date can't be before the start date."
+
+    # A status has to agree with the dates. Checked only when one of them changes,
+    # so editing the price of an older trek doesn't complain about its past dates.
+    status = cleaned.get("status", existing.status if existing else "Pending")
+    changed = existing is None or (status, start, end) != (existing.status, existing.start_date, existing.end_date)
+    if changed and start and end and not errors:
+        problem = status_date_problem(status, start, end)
+        if problem:
+            errors["status"] = problem
 
     return cleaned, errors

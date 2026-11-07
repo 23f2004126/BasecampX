@@ -2,11 +2,13 @@
 Create the database tables, the three roles, the single admin account
 and some demo data for testing.
 
-Run:  python create_initial_data.py
+Run:  python create_initial_data.py          add whatever is missing
+      python create_initial_data.py --reset  wipe everything, rebuild fresh demo data
 
 Safe to run many times: every record is looked up first and only created
-if it is missing, so nothing gets duplicated.
+if it is missing, so nothing gets duplicated and later changes are kept.
 """
+import argparse
 from datetime import date, datetime, timedelta, timezone
 
 from flask import current_app
@@ -128,16 +130,15 @@ TREKS = [
      "instructions": "Suitable for families and beginners."},
 ]
 
-# (trekker index, trek name, booking status, payment status[, booked how many days ago])
+# (trekker index, trek name, booking status, payment status, booked how many days ago)
 BOOKINGS = [
-    (0, "Everest Base Camp", "Booked", "Paid"),
-    (2, "Everest Base Camp", "Booked", "Paid"),
-    (1, "Roopkund", "Booked", "Paid"),
-    (2, "Roopkund", "Cancelled", "Refunded"),  # history: cancelled booking
-    (0, "Kuari Pass", "Completed", "Paid"),     # history: completed trek
-    (1, "Kuari Pass", "Completed", "Paid"),
-    (2, "Kuari Pass", "Completed", "Paid"),
-    # --- more demo bookings, spread over the last months so the charts have shape
+    (0, "Everest Base Camp", "Booked", "Paid", 30),
+    (2, "Everest Base Camp", "Booked", "Paid", 26),
+    (1, "Roopkund", "Booked", "Paid", 20),
+    (2, "Roopkund", "Cancelled", "Refunded", 18),  # history: cancelled booking
+    (0, "Kuari Pass", "Completed", "Paid", 80),    # history: completed trek
+    (1, "Kuari Pass", "Completed", "Paid", 72),
+    (2, "Kuari Pass", "Completed", "Paid", 65),
     (4, "Everest Base Camp", "Booked", "Paid", 35),
     (7, "Everest Base Camp", "Booked", "Paid", 28),
     (6, "Roopkund", "Booked", "Paid", 16),
@@ -249,6 +250,43 @@ def upgrade_schema():
     return ["schema   booking.certificate_no column added"]
 
 
+def reset_database():
+    """
+    Delete all data by dropping every table (including any left over from older
+    versions). The file itself stays, because a running Flask server or Celery
+    worker would otherwise keep writing to the deleted file.
+    """
+    db.reflect()
+    db.drop_all()
+    db.session.commit()
+    print("Database reset: all tables dropped.")
+
+
+def check_trek_dates():
+    """
+    Status and dates must agree. A Completed trek ending in the future is fixed
+    here (older versions let staff finish a trek early and kept the planned date).
+    Anything else is reported: dates drift as time passes, so --reset is the cure.
+    """
+    today = date.today()
+    fixed, problems = [], []
+    for trek in Trek.query.order_by(Trek.id):
+        if trek.status == "Completed" and trek.end_date > today:
+            trek.finish_on(today)
+            fixed.append(f"fixed    {trek.name}: Completed, so its end date is now {today}")
+        elif trek.status == "Ongoing" and not trek.start_date <= today <= trek.end_date:
+            problems.append(f"{trek.name} is Ongoing but runs {trek.start_date} to {trek.end_date}")
+        elif trek.status in ("Open", "Approved", "Pending") and trek.start_date <= today:
+            problems.append(f"{trek.name} is {trek.status} but started on {trek.start_date}")
+    wrong_bookings = (
+        Booking.query.join(Trek).filter(Booking.status == "Completed", Trek.status != "Completed").count()
+    )
+    if wrong_bookings:
+        problems.append(f"{wrong_bookings} Completed booking(s) on treks that aren't Completed")
+    db.session.commit()
+    return fixed, problems
+
+
 def seed():
     created = []  # human-readable log of everything new
     datastore = security.datastore
@@ -267,6 +305,8 @@ def seed():
 
     # 3. The one and only admin (credentials come from config / env vars)
     cfg = current_app.config
+    if not cfg["ADMIN_PASSWORD"]:
+        raise SystemExit("Set ADMIN_PASSWORD in .env first (see .env.example).")
     _, new = get_or_create_user(
         cfg["ADMIN_EMAIL"], cfg["ADMIN_PASSWORD"], roles[ROLE_ADMIN],
         full_name="TMA Admin", contact_number="9876500000",
@@ -304,6 +344,7 @@ def seed():
 
     # 6. Treks (dates are relative to today so the demo never goes stale)
     today = date.today()
+    now = datetime.now(timezone.utc)
     treks = {}
     for t in TREKS:
         trek = Trek.query.filter_by(name=t["name"]).first()
@@ -317,6 +358,8 @@ def seed():
                 description=t["description"], instructions=t["instructions"],
                 price=t["price"],
                 staff=staff_users[t["staff"]] if t["staff"] is not None else None,
+                # Listed 10 days before its first booking (a week ago if it has none)
+                created_at=now - timedelta(days=10 + max((b[4] for b in BOOKINGS if b[1] == t["name"]), default=0)),
             )
             db.session.add(trek)
             created.append(f"trek     {t['name']} ({t['status']})")
@@ -324,12 +367,15 @@ def seed():
 
     # 7. Bookings. A booking that holds a seat (Booked/Completed) uses up one
     #    available slot; a cancelled one gives its seat back.
-    for trekker_idx, trek_name, status, payment, *days_ago in BOOKINGS:
+    #    Looked up by person + trek, NOT status: a seeded booking that was since
+    #    cancelled or completed must not come back on the next run. Payments,
+    #    reviews and notifications are added only for bookings created by this run.
+    new_bookings = []
+    for trekker_idx, trek_name, status, payment, days_ago in BOOKINGS:
         user, trek = trekkers[trekker_idx], treks[trek_name]
-        exists = Booking.query.filter_by(user=user, trek=trek, status=status).first()
-        if exists:
+        if Booking.query.filter_by(user=user, trek=trek).first():
             continue
-        booked_at = datetime.now(timezone.utc) - timedelta(days=days_ago[0] if days_ago else 0)
+        booked_at = now - timedelta(days=days_ago)
         booking = Booking(user=user, trek=trek, status=status, booking_date=booked_at,
                           payment_status=payment, amount=trek.price)
         if status == "Cancelled":
@@ -337,17 +383,15 @@ def seed():
         else:
             trek.available_slots -= 1
         db.session.add(booking)
+        new_bookings.append(booking)
         created.append(f"booking  {user.email} -> {trek_name} [{status}/{payment}]")
     db.session.flush()
 
-    seeded = [Booking.query.filter_by(user=trekkers[b[0]], trek=treks[b[1]], status=b[2]).first()
-              for b in BOOKINGS]
-
     # 7b. Waitlist for full treks (positions = joining order)
-    for trekker_idx, trek_name in WAITLIST:
+    for days_ago, (trekker_idx, trek_name) in zip(range(len(WAITLIST) + 1, 1, -1), WAITLIST):
         user, trek = trekkers[trekker_idx], treks[trek_name]
-        if not Waitlist.query.filter_by(user=user, trek=trek, status="Waiting").first():
-            db.session.add(Waitlist(user=user, trek=trek, status="Waiting"))
+        if not Waitlist.query.filter_by(user=user, trek=trek).first():
+            db.session.add(Waitlist(user=user, trek=trek, status="Waiting", created_at=now - timedelta(days=days_ago)))
             db.session.add(Notification(user_id=user.id, title="Joined the waitlist",
                                         message=f"You're on the waitlist for {trek_name}.", type="waitlist", link="/user/bookings"))
             created.append(f"waitlist {user.email} -> {trek_name}")
@@ -356,24 +400,29 @@ def seed():
         renumber_waitlist(treks[trek_name].id)
 
     # 8. Payments for the seeded paid/refunded bookings
-    for booking in seeded:
-        if booking.payments or booking.payment_status not in ("Paid", "Refunded"):
+    for booking in new_bookings:
+        if booking.payment_status not in ("Paid", "Refunded"):
             continue
-        db.session.add(Payment(booking=booking, amount=booking.amount, method="UPI", status="Success"))
+        db.session.add(Payment(booking=booking, amount=booking.amount, method="UPI", status="Success",
+                               created_at=booking.booking_date))
         if booking.payment_status == "Refunded":
-            db.session.add(Payment(booking=booking, amount=booking.amount, method="UPI", status="Refunded"))
+            db.session.add(Payment(booking=booking, amount=booking.amount, method="UPI", status="Refunded",
+                                   created_at=booking.cancelled_at))
         created.append(f"payment  booking #{booking.id} [{booking.payment_status}]")
 
     # 9. Reviews of completed treks (one hidden by the admin, to show moderation)
-    for trekker_idx, trek_name, rating, comment, hidden in REVIEWS:
+    for days_after, (trekker_idx, trek_name, rating, comment, hidden) in enumerate(REVIEWS, start=1):
         booking = Booking.query.filter_by(user=trekkers[trekker_idx], trek=treks[trek_name], status="Completed").first()
-        if booking and booking.review is None:
+        if booking in new_bookings:
             db.session.add(Review(user=trekkers[trekker_idx], trek=booking.trek, booking=booking,
-                                  rating=rating, comment=comment, is_hidden=hidden))
+                                  rating=rating, comment=comment, is_hidden=hidden,
+                                  # written in the days after the trek ended
+                                  created_at=datetime.combine(booking.trek.end_date, datetime.min.time(), timezone.utc)
+                                  + timedelta(days=days_after)))
             created.append(f"review   {trekkers[trekker_idx].email} -> {trek_name} ({rating}*{', hidden' if hidden else ''})")
 
     # 10. A few notifications matching the seeded bookings
-    for booking in seeded:
+    for booking in new_bookings:
         if booking.status == "Booked" and booking.payment_status != "Paid":
             continue  # nothing to announce for an unpaid booking
         title, message, kind, link = {
@@ -400,9 +449,13 @@ def seed():
         created.append(f"checklist {added} default items (Easy/Moderate/Hard)")
 
     db.session.commit()
+
+    # 12. Status and dates must agree
+    fixed, problems = check_trek_dates()
+    created += fixed
     clear_trek_cache()  # data was written directly: drop anything cached
 
-    # 8. Report
+    # 13. Report
     if created:
         print(f"Created {len(created)} record(s):")
         for line in created:
@@ -411,9 +464,19 @@ def seed():
         print("Nothing to create - all initial data already exists.")
     print(f"Totals: {User.query.count()} users, {Trek.query.count()} treks, "
           f"{Booking.query.count()} bookings")
+    for problem in problems:
+        print("  ! ", problem)
+    if problems:
+        print("Run with --reset for fresh demo dates (this deletes all data).")
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Create the TMA tables, roles, admin and demo data.")
+    parser.add_argument("--reset", action="store_true", help="delete all data first, then rebuild it")
+    args = parser.parse_args()
+
     app = create_app()
     with app.app_context():
+        if args.reset:
+            reset_database()
         seed()

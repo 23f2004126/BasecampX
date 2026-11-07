@@ -7,3 +7,5 @@ static/exports/
 .DS_Store
 .env
 celerybeat-schedule*
+.claude/
+CLAUDE.md

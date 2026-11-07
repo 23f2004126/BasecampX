@@ -10,6 +10,8 @@ Status changes allowed for staff:
     Open / Closed             ->  Ongoing          (PUT /treks/<id>/start)
     Ongoing                   ->  Completed        (PUT /treks/<id>/complete)
 """
+from datetime import date
+
 from flask import Blueprint, abort, jsonify
 from flask_security import current_user
 
@@ -18,7 +20,7 @@ from sqlalchemy import or_
 from extensions import db
 from models import ROLE_STAFF, TREK_STATUSES, Booking, Trek, Waitlist
 from tasks.tasks import send_booking_email
-from utils.bookings import promote_from_waitlist
+from utils.bookings import cancel_booking, promote_from_waitlist
 from utils.cache import clear_trek_cache
 from utils.decorators import role_required
 from utils.jobs import enqueue_quietly
@@ -178,6 +180,7 @@ def start_trek(trek_id):
     trek = get_my_trek(trek_id)
     require_status(trek, ("Open", "Closed"), "start")
     trek.status = "Ongoing"
+    trek.start_on(date.today())  # an Ongoing trek's dates must span today
     tell_booked_trekkers(trek, f"{trek.name} has started. Have a great trek!")
     # The trek has left: nobody on the waitlist can get a seat any more.
     waiting = Waitlist.query.filter_by(trek_id=trek.id, status="Waiting").all()
@@ -197,6 +200,11 @@ def complete_trek(trek_id):
     require_status(trek, ("Ongoing",), "complete")
 
     trek.status = "Completed"
+    trek.finish_on(date.today())  # may be earlier than planned; never a future end date
+    # A seat that was never paid for doesn't count as going on the trek (no certificate or review).
+    unpaid = Booking.query.filter_by(trek_id=trek.id, status="Booked", payment_status="Pending").all()
+    for booking in unpaid:
+        cancel_booking(booking, " because payment wasn't completed before the trek ended")
     finishers = booked_user_ids(trek.id)
     # Everyone still "Booked" actually went on the trek -> their booking is now history.
     completed = (
@@ -208,6 +216,8 @@ def complete_trek(trek_id):
                 "trek", "/user/history")
     db.session.commit()  # trek status + all bookings + notifications saved together
     clear_trek_cache(trek.id)
+    for booking in unpaid:
+        enqueue_quietly(send_booking_email, booking.id, "cancelled")
     return jsonify({
         "message": "Trek completed.",
         "bookings_completed": completed,
